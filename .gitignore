@@ -1,0 +1,61 @@
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Build and Distribution Artifacts (PyInstaller / setuptools)
+build/
+dist/
+*.manifest
+*.egg-info/
+MediaProof/build/
+MediaProof/dist/
+
+# Model Checkpoints & Large Neural Weights (>100MB, downloaded via scripts)
+ckpts/
+*.pth
+*.pt
+*.bin
+*.onnx
+MediaProof/ckpts/
+MediaProof/models/**/*.pth
+models/**/*.pth
+
+# Standalone Binaries (downloaded via download_ffmpeg.py)
+MediaProof/tools/ffmpeg/ffmpeg.exe
+MediaProof/tools/ffmpeg/ffprobe.exe
+*.zip
+
+# Runtime, Temp and Local Database files
+MediaProof/data/temp/*
+!MediaProof/data/temp/.gitkeep
+MediaProof/data/protected/*
+!MediaProof/data/protected/.gitkeep
+MediaProof/database/*.db
+!MediaProof/database/.gitkeep
+
+# Backups and Logs
+*.log
+*.bak*
+
+# Environment and Secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

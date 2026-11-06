@@ -1,0 +1,144 @@
+{
+  "step": "Audio E2E Audit",
+  "timestamp": "2026-09-03T19:33:16Z",
+  "original_file": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_audio_orig.wav",
+  "watermarked_file": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_audio_aseal_wm.wav",
+  "asset_id": "MP-678c9ccc-e1fa-4b41-970d-90b82d16f480",
+  "sha256": "6824305effac65924b5e993b15dfd5b8fae145479ccfd24401b26bd7e37b0d51",
+  "watermark_token": "1C13",
+  "embed_result": {
+    "status": "ok",
+    "engine": "audioseal",
+    "output_path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_audio_aseal_wm.wav",
+    "asset_id": "MP-678c9ccc-e1fa-4b41-970d-90b82d16f480",
+    "size_bytes": 96078,
+    "has_watermark": true,
+    "processing_time_seconds": 0.8999,
+    "details": {
+      "engine_display_name": "Meta AudioSeal Neural Audio Watermark Engine",
+      "watermark_token": "1C13"
+    }
+  },
+  "detect_result": {
+    "status": "ok",
+    "engine": "audioseal",
+    "watermark_detected": true,
+    "confidence": 0.98,
+    "recovered_asset_id": "MP-678c9ccc-e1fa-4b41-970d-90b82d16f480",
+    "provenance_record": {
+      "id": 18,
+      "asset_id": "MP-678c9ccc-e1fa-4b41-970d-90b82d16f480",
+      "watermark_token": "1C13",
+      "original_filename": "audit_audio_orig.wav",
+      "original_path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_audio_orig.wav",
+      "file_size_bytes": 96044,
+      "sha256": "6824305effac65924b5e993b15dfd5b8fae145479ccfd24401b26bd7e37b0d51",
+      "media_type": "audio",
+      "container_format": "wav",
+      "duration_seconds": 3.0,
+      "video_codec": null,
+      "width": null,
+      "height": null,
+      "fps": null,
+      "audio_codec": "pcm_s16le",
+      "sample_rate": 16000,
+      "channels": 1,
+      "parent_asset_id": null,
+      "relationship_type": "ORIGINAL",
+      "created_at": "2026-09-03T19:33:14.514277+00:00",
+      "registered_at": "2026-09-03T19:33:14.514277+00:00",
+      "already_registered": false
+    },
+    "processing_time_seconds": 0.183,
+    "message": "AudioSeal watermark payload successfully detected and decoded.",
+    "details": {
+      "watermark_token": "0C13",
+      "engine_display_name": "Meta AudioSeal Neural Audio Watermark Engine"
+    }
+  },
+  "forensic_risk": "LOW",
+  "api_verify_classification": "VERIFIED DERIVATIVE",
+  "api_verify_full": {
+    "status": "ok",
+    "classification": "VERIFIED DERIVATIVE",
+    "confidence": "HIGH",
+    "confidence_basis": [
+      "Resolved watermark token '0C13' -> 'MP-678c9ccc-e1fa-4b41-970d-90b82d16f480'",
+      "Watermark verified pointing to parent Asset ID 'MP-678c9ccc-e1fa-4b41-970d-90b82d16f480'"
+    ],
+    "asset_id": "MP-678c9ccc-e1fa-4b41-970d-90b82d16f480",
+    "hash_evidence": {
+      "status": "MISMATCH",
+      "strength": "NONE",
+      "explanation": "SHA-256 hash does not match any registered original asset.",
+      "details": {
+        "sha256": "b32b613c1db005ce168030f027b349a21e53dc13c4a0ff8a713f545707dcdc1b",
+        "matched_asset_id": null
+      }
+    },
+    "watermark_evidence": {
+      "status": "PRESENT_AND_RESOLVED",
+      "strength": "STRONG",
+      "explanation": "Invisible watermark detected (audio_audioseal) and resolved to Asset ID 'MP-678c9ccc-e1fa-4b41-970d-90b82d16f480'.",
+      "details": {
+        "watermark_detected": true,
+        "token": "0C13",
+        "resolved_asset_id": "MP-678c9ccc-e1fa-4b41-970d-90b82d16f480",
+        "engine_used": "audio_audioseal"
+      }
+    },
+    "provenance_evidence": {
+      "status": "RECORD_FOUND",
+      "strength": "STRONG",
+      "explanation": "Registered provenance record retrieved for Asset ID 'MP-678c9ccc-e1fa-4b41-970d-90b82d16f480'.",
+      "details": {
+        "id": 18,
+        "asset_id": "MP-678c9ccc-e1fa-4b41-970d-90b82d16f480",
+        "watermark_token": "1C13",
+        "original_filename": "audit_audio_orig.wav",
+        "original_path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_audio_orig.wav",
+        "file_size_bytes": 96044,
+        "sha256": "6824305effac65924b5e993b15dfd5b8fae145479ccfd24401b26bd7e37b0d51",
+        "media_type": "audio",
+        "container_format": "wav",
+        "duration_seconds": 3.0,
+        "video_codec": null,
+        "width": null,
+        "height": null,
+        "fps": null,
+        "audio_codec": "pcm_s16le",
+        "sample_rate": 16000,
+        "channels": 1,
+        "parent_asset_id": null,
+        "relationship_type": "ORIGINAL",
+        "created_at": "2026-09-03T19:33:14.514277+00:00",
+        "registered_at": "2026-09-03T19:33:14.514277+00:00",
+        "already_registered": false
+      }
+    },
+    "forensic_evidence": {
+      "status": "LOW",
+      "strength": "LOW",
+      "explanation": "Low forensic anomaly indicators (Risk Score: 0.00).",
+      "details": {
+        "forensic_risk_score": 0.0,
+        "risk_score_type": "heuristic",
+        "raw_status": "LOW_RISK",
+        "signals_count": 4
+      }
+    },
+    "metadata_evidence": {
+      "status": "STANDARD",
+      "strength": "LOW",
+      "explanation": "Standard container and stream metadata parameters.",
+      "details": {
+        "anomalies_found": []
+      }
+    },
+    "conflicts": [],
+    "limitations": [
+      "Audio ML inference unavailable: AASIST anti-spoofing model checkpoint file (AASIST.pth) not found. Step 6B audit confirmed AASIST weights are not pre-packaged in PyTorch pip distribution. To enable AASIST ML audio inference, place weights at: 'C:\\Users\\krish\\Desktop\\project3\\MediaProof\\models\\forensics\\aasist.pth'."
+    ],
+    "processing_time_seconds": 0.3782
+  }
+}

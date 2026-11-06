@@ -1,0 +1,523 @@
+{
+  "A_Original": {
+    "key": "A_Original",
+    "path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\originals\\000.mp4",
+    "sha256": "0e51b9b46acc7eaeca62022e1b869541406d2ca887cd401dcc03cc5db28bc8ed",
+    "file_size_bytes": 894312,
+    "duration_seconds": 15.84,
+    "container": "mov,mp4,m4a,3gp,3g2,mj2",
+    "video_codec": "h264",
+    "resolution": "640x480",
+    "fps": 25.0,
+    "audio_codec": "None",
+    "verification": {
+      "classification": "INSUFFICIENT EVIDENCE",
+      "confidence": "LOW",
+      "confidence_basis": [
+        "Exact SHA-256 cryptographic match",
+        "Resolved watermark token 'C791' -> 'MP-33749681-c58d-4686-80c2-17803fa96ae3' (proves provenance linkage, not content authenticity)",
+        "Conflicting provenance indicators present"
+      ],
+      "hash_status": "MATCH",
+      "watermark_status": "PRESENT_AND_RESOLVED",
+      "watermark_engine": "video_videoseal",
+      "resolved_asset_id": "MP-33749681-c58d-4686-80c2-17803fa96ae3",
+      "forensic_status": "MEDIUM",
+      "conflicts": [
+        "Provenance Conflict: Watermark resolves to Asset ID 'MP-33749681-c58d-4686-80c2-17803fa96ae3' but SHA-256 hash matches Asset ID 'MP-79d3c408-a86e-415a-91e5-92b27c65501e'."
+      ]
+    },
+    "forensics": {
+      "raw_status": "ELEVATED_RISK",
+      "risk_score": 0.3,
+      "generic_forensic_status": "MEDIUM_GENERIC_ANOMALY",
+      "manipulation_forensic_status": "NO_VALIDATED_DETECTOR",
+      "transformation_consistency": {
+        "status": "NOT_AVAILABLE",
+        "explanation": "No registered parent asset available for baseline comparison.",
+        "feature_diffs": []
+      },
+      "computed_score": 0.3,
+      "high_risk_count": 0,
+      "medium_risk_count": 2,
+      "low_risk_count": 4,
+      "decomposition_formula": "(0 * 0.40) + (2 * 0.15) = 0.30",
+      "signals": [
+        {
+          "name": "stream_presence",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Container streams: video=True, audio=False, format=mov,mp4,m4a,3gp,3g2,mj2",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_codec_standard",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Standard video codec detected: h264 (640x480 @ 25.00fps)",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_sampled_frame_count",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Analyzed 10 sampled frames at 1.0 fps.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "high_frequency_energy_ratio",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 0.5325838519523056,
+          "details": "Elevated high-frequency energy ratio (0.5326); potential spatial grid artifact.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        },
+        {
+          "name": "spatial_blurriness_laplacian",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 950.1034545898438,
+          "details": "Normal spatial edge variance (950.10).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "temporal_noise_variation",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 365.4179992675781,
+          "details": "Elevated frame-to-frame temporal noise variance (365.42).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        }
+      ]
+    }
+  },
+  "B_FFmpeg_Reencode": {
+    "key": "B_FFmpeg_Reencode",
+    "path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_investigation\\000_ffmpeg_reencode.mp4",
+    "sha256": "c344ba01b03b5136f87df9877e013307f5deee51bb68677b6c97eeb975aebf21",
+    "file_size_bytes": 818811,
+    "duration_seconds": 15.84,
+    "container": "mov,mp4,m4a,3gp,3g2,mj2",
+    "video_codec": "h264",
+    "resolution": "640x480",
+    "fps": 25.0,
+    "audio_codec": "None",
+    "verification": {
+      "classification": "UNKNOWN PROVENANCE",
+      "confidence": "MEDIUM",
+      "confidence_basis": [
+        "No reliable registered hash or watermark linkage was found. Watermark absence does not by itself indicate manipulation."
+      ],
+      "hash_status": "MISMATCH",
+      "watermark_status": "NOT_DETECTED",
+      "watermark_engine": null,
+      "resolved_asset_id": null,
+      "forensic_status": "MEDIUM",
+      "conflicts": []
+    },
+    "forensics": {
+      "raw_status": "ELEVATED_RISK",
+      "risk_score": 0.3,
+      "generic_forensic_status": "MEDIUM_GENERIC_ANOMALY",
+      "manipulation_forensic_status": "NO_VALIDATED_DETECTOR",
+      "transformation_consistency": {
+        "status": "NOT_AVAILABLE",
+        "explanation": "No registered parent asset available for baseline comparison.",
+        "feature_diffs": []
+      },
+      "computed_score": 0.3,
+      "high_risk_count": 0,
+      "medium_risk_count": 2,
+      "low_risk_count": 4,
+      "decomposition_formula": "(0 * 0.40) + (2 * 0.15) = 0.30",
+      "signals": [
+        {
+          "name": "stream_presence",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Container streams: video=True, audio=False, format=mov,mp4,m4a,3gp,3g2,mj2",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_codec_standard",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Standard video codec detected: h264 (640x480 @ 25.00fps)",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_sampled_frame_count",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Analyzed 10 sampled frames at 1.0 fps.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "high_frequency_energy_ratio",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 0.5312841360842494,
+          "details": "Elevated high-frequency energy ratio (0.5313); potential spatial grid artifact.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        },
+        {
+          "name": "spatial_blurriness_laplacian",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 940.2564392089844,
+          "details": "Normal spatial edge variance (940.26).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "temporal_noise_variation",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 363.425048828125,
+          "details": "Elevated frame-to-frame temporal noise variance (363.43).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        }
+      ]
+    }
+  },
+  "C_Custom_Protected": {
+    "key": "C_Custom_Protected",
+    "path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_investigation\\000_custom_wm.mp4",
+    "sha256": "1fa5fcc93127f821edaf78e10d8e1aebe8349c8317ab939ff0fb070aaec57b38",
+    "file_size_bytes": 792521,
+    "duration_seconds": 15.84,
+    "container": "mov,mp4,m4a,3gp,3g2,mj2",
+    "video_codec": "h264",
+    "resolution": "640x480",
+    "fps": 25.0,
+    "audio_codec": "None",
+    "verification": {
+      "classification": "UNKNOWN PROVENANCE",
+      "confidence": "MEDIUM",
+      "confidence_basis": [
+        "No reliable registered hash or watermark linkage was found. Watermark absence does not by itself indicate manipulation."
+      ],
+      "hash_status": "MISMATCH",
+      "watermark_status": "NOT_DETECTED",
+      "watermark_engine": null,
+      "resolved_asset_id": null,
+      "forensic_status": "MEDIUM",
+      "conflicts": []
+    },
+    "forensics": {
+      "raw_status": "ELEVATED_RISK",
+      "risk_score": 0.3,
+      "generic_forensic_status": "MEDIUM_GENERIC_ANOMALY",
+      "manipulation_forensic_status": "NO_VALIDATED_DETECTOR",
+      "transformation_consistency": {
+        "status": "NOT_AVAILABLE",
+        "explanation": "No registered parent asset available for baseline comparison.",
+        "feature_diffs": []
+      },
+      "computed_score": 0.3,
+      "high_risk_count": 0,
+      "medium_risk_count": 2,
+      "low_risk_count": 4,
+      "decomposition_formula": "(0 * 0.40) + (2 * 0.15) = 0.30",
+      "signals": [
+        {
+          "name": "stream_presence",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Container streams: video=True, audio=False, format=mov,mp4,m4a,3gp,3g2,mj2",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_codec_standard",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Standard video codec detected: h264 (640x480 @ 25.00fps)",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_sampled_frame_count",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Analyzed 10 sampled frames at 1.0 fps.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "high_frequency_energy_ratio",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 0.5358566718204334,
+          "details": "Elevated high-frequency energy ratio (0.5359); potential spatial grid artifact.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        },
+        {
+          "name": "spatial_blurriness_laplacian",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 992.3017028808594,
+          "details": "Normal spatial edge variance (992.30).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "temporal_noise_variation",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 355.1054382324219,
+          "details": "Elevated frame-to-frame temporal noise variance (355.11).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        }
+      ]
+    }
+  },
+  "D_VideoSeal_Protected": {
+    "key": "D_VideoSeal_Protected",
+    "path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\protected\\wm_000.mp4",
+    "sha256": "5f2b14f82b77dd727e4d51747be2fb6d8db10d3887d6f107a495c893fe92425a",
+    "file_size_bytes": 2432773,
+    "duration_seconds": 15.84,
+    "container": "mov,mp4,m4a,3gp,3g2,mj2",
+    "video_codec": "h264",
+    "resolution": "640x480",
+    "fps": 25.0,
+    "audio_codec": "None",
+    "verification": {
+      "classification": "VERIFIED DERIVATIVE",
+      "confidence": "MEDIUM",
+      "confidence_basis": [
+        "Resolved watermark token 'EAFF' -> 'MP-79d3c408-a86e-415a-91e5-92b27c65501e' (proves provenance linkage, not content authenticity)",
+        "Provenance linkage confirmed to registered asset 'MP-79d3c408-a86e-415a-91e5-92b27c65501e'. Installed ML detector reported no manipulation anomaly."
+      ],
+      "hash_status": "MISMATCH",
+      "watermark_status": "PRESENT_AND_RESOLVED",
+      "watermark_engine": "video_videoseal",
+      "resolved_asset_id": "MP-79d3c408-a86e-415a-91e5-92b27c65501e",
+      "forensic_status": "MEDIUM",
+      "conflicts": []
+    },
+    "forensics": {
+      "raw_status": "ELEVATED_RISK",
+      "risk_score": 0.3,
+      "generic_forensic_status": "MEDIUM_GENERIC_ANOMALY",
+      "manipulation_forensic_status": "NO_VALIDATED_DETECTOR",
+      "transformation_consistency": {
+        "status": "NOT_AVAILABLE",
+        "explanation": "No registered parent asset available for baseline comparison.",
+        "feature_diffs": []
+      },
+      "computed_score": 0.3,
+      "high_risk_count": 0,
+      "medium_risk_count": 2,
+      "low_risk_count": 4,
+      "decomposition_formula": "(0 * 0.40) + (2 * 0.15) = 0.30",
+      "signals": [
+        {
+          "name": "stream_presence",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Container streams: video=True, audio=False, format=mov,mp4,m4a,3gp,3g2,mj2",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_codec_standard",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Standard video codec detected: h264 (640x480 @ 25.00fps)",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_sampled_frame_count",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Analyzed 10 sampled frames at 1.0 fps.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "high_frequency_energy_ratio",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 0.5325923298407566,
+          "details": "Elevated high-frequency energy ratio (0.5326); potential spatial grid artifact.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        },
+        {
+          "name": "spatial_blurriness_laplacian",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 943.0483215332031,
+          "details": "Normal spatial edge variance (943.05).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "temporal_noise_variation",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 364.4880065917969,
+          "details": "Elevated frame-to-frame temporal noise variance (364.49).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        }
+      ]
+    }
+  },
+  "E_Manipulated_Deepfake": {
+    "key": "E_Manipulated_Deepfake",
+    "path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_investigation\\000_deepfake_manipulated.mp4",
+    "sha256": "e2b91aeec1889e264bb0797dad2118a7d76e73f217c8efb38f6fb985beffe6b9",
+    "file_size_bytes": 346813,
+    "duration_seconds": 15.84,
+    "container": "mov,mp4,m4a,3gp,3g2,mj2",
+    "video_codec": "h264",
+    "resolution": "640x480",
+    "fps": 25.0,
+    "audio_codec": "None",
+    "verification": {
+      "classification": "VERIFIED DERIVATIVE",
+      "confidence": "MEDIUM",
+      "confidence_basis": [
+        "Resolved watermark token 'EAFF' -> 'MP-79d3c408-a86e-415a-91e5-92b27c65501e' (proves provenance linkage, not content authenticity)",
+        "Provenance linkage confirmed to registered asset 'MP-79d3c408-a86e-415a-91e5-92b27c65501e'. Installed ML detector reported no manipulation anomaly."
+      ],
+      "hash_status": "MISMATCH",
+      "watermark_status": "PRESENT_AND_RESOLVED",
+      "watermark_engine": "video_videoseal",
+      "resolved_asset_id": "MP-79d3c408-a86e-415a-91e5-92b27c65501e",
+      "forensic_status": "MEDIUM",
+      "conflicts": []
+    },
+    "forensics": {
+      "raw_status": "ELEVATED_RISK",
+      "risk_score": 0.3,
+      "generic_forensic_status": "MEDIUM_GENERIC_ANOMALY",
+      "manipulation_forensic_status": "NO_VALIDATED_DETECTOR",
+      "transformation_consistency": {
+        "status": "NOT_AVAILABLE",
+        "explanation": "No registered parent asset available for baseline comparison.",
+        "feature_diffs": []
+      },
+      "computed_score": 0.3,
+      "high_risk_count": 0,
+      "medium_risk_count": 2,
+      "low_risk_count": 4,
+      "decomposition_formula": "(0 * 0.40) + (2 * 0.15) = 0.30",
+      "signals": [
+        {
+          "name": "stream_presence",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Container streams: video=True, audio=False, format=mov,mp4,m4a,3gp,3g2,mj2",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_codec_standard",
+          "category": "METADATA",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Standard video codec detected: h264 (640x480 @ 25.00fps)",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "video_sampled_frame_count",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 0.0,
+          "details": "Analyzed 10 sampled frames at 1.0 fps.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "high_frequency_energy_ratio",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 0.3841013620452508,
+          "details": "Elevated high-frequency energy ratio (0.3841); potential spatial grid artifact.",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        },
+        {
+          "name": "spatial_blurriness_laplacian",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "LOW",
+          "score": 308.79949951171875,
+          "details": "Normal spatial edge variance (308.80).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.0
+        },
+        {
+          "name": "temporal_noise_variation",
+          "category": "GENERIC_TECHNICAL",
+          "risk_level": "MEDIUM",
+          "score": 287.4406433105469,
+          "details": "Elevated frame-to-frame temporal noise variance (287.44).",
+          "evidence_strength": "low",
+          "type": "heuristic",
+          "score_contribution": 0.15
+        }
+      ]
+    }
+  }
+}

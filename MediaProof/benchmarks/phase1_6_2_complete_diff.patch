@@ -1,0 +1,94 @@
+--- a/tests/test_phase1_controlled_integration.py
++++ b/tests/test_phase1_controlled_integration.py
+@@ -655,25 +655,74 @@
+ 
+ def test_collection_and_execution_cannot_modify_production_database():
+     """
+-    Regression Test: Verifies that pytest collection and execution cannot initialize
++    Regression Test: Verifies that pytest collection and test execution cannot initialize
+     or modify the production database (database/mediaproof.db).
+-    Runs pytest in a clean subprocess and asserts byte-identical hash preservation.
+-    """
+-    prod_db = Path(__file__).resolve().parent.parent / "database" / "mediaproof.db"
++
++    Runs clean subprocesses with scrubbed environment (MEDIAPROOF_DB_PATH unset) to verify that:
++    1. Pytest collection of the controlled integration suite triggers zero database mutations.
++    2. Actual execution of a representative Phase 1 test suite (tests/test_temporal_persistence.py)
++       configures its own isolated sandbox without relying on inherited environment variables.
++    3. Execution of the controlled integration persistence scenario against isolated storage
++       does not mutate production storage.
++    4. Avoids recursive invocation of the regression test itself.
++    """
++    project_root = Path(__file__).resolve().parent.parent
++    prod_db = project_root / "database" / "mediaproof.db"
+     assert prod_db.exists(), f"Production database not found at: {prod_db}"
+     initial_hash = hashlib.sha256(prod_db.read_bytes()).hexdigest()
+ 
+-    # Run pytest --collect-only in a standalone clean subprocess
+-    cmd = [
+-        sys.executable, "-m", "pytest",
+-        "tests/test_phase1_controlled_integration.py",
+-        "--collect-only", "-q",
++    # Scrub MEDIAPROOF_DB_PATH to force child process isolation bootstrap to configure its own sandbox
++    clean_env = os.environ.copy()
++    clean_env.pop("MEDIAPROOF_DB_PATH", None)
++
++    subprocesses = [
++        (
++            "pytest_collection_controlled_integration",
++            [sys.executable, "-m", "pytest", "tests/test_phase1_controlled_integration.py", "--collect-only", "-q"]
++        ),
++        (
++            "pytest_execution_representative_persistence_suite",
++            [sys.executable, "-m", "pytest", "tests/test_temporal_persistence.py", "-q"]
++        ),
++        (
++            "pytest_execution_controlled_integration_persistence",
++            [sys.executable, "-m", "pytest", "tests/test_phase1_controlled_integration.py", "-k", "test_temporal_persistence_with_controlled_asset", "-q"]
++        ),
+     ]
+-    proc = subprocess.run(cmd, cwd=str(prod_db.parent.parent), capture_output=True, text=True)
+-    assert proc.returncode == 0, f"Pytest collection failed: {proc.stderr}"
+-
+-    post_collect_hash = hashlib.sha256(prod_db.read_bytes()).hexdigest()
+-    assert initial_hash == post_collect_hash, (
+-        f"CRITICAL: Production database modified during pytest collection! "
+-        f"Initial: {initial_hash}, Post-collection: {post_collect_hash}"
+-    )
++
++    for label, cmd in subprocesses:
++        before_hash = hashlib.sha256(prod_db.read_bytes()).hexdigest()
++        assert before_hash == initial_hash, (
++            f"Pre-condition failed before {label}: database hash altered! "
++            f"Expected {initial_hash}, found {before_hash}"
++        )
++
++        proc = subprocess.run(
++            cmd,
++            cwd=str(project_root),
++            env=clean_env,
++            capture_output=True,
++            text=True
++        )
++
++        after_hash = hashlib.sha256(prod_db.read_bytes()).hexdigest()
++
++        assert proc.returncode == 0, (
++            f"Subprocess '{label}' failed with return code {proc.returncode}!\n"
++            f"Command: {' '.join(cmd)}\n"
++            f"Stdout: {proc.stdout}\n"
++            f"Stderr: {proc.stderr}"
++        )
++
++        assert before_hash == after_hash, (
++            f"CRITICAL: Production database modified during '{label}'!\n"
++            f"Before SHA-256: {before_hash}\n"
++            f"After SHA-256:  {after_hash}\n"
++            f"Command: {' '.join(cmd)}\n"
++            f"Stdout: {proc.stdout}"
++        )
++        assert after_hash == initial_hash, (
++            f"CRITICAL: Production database drifted from initial state after '{label}'!\n"
++            f"Initial SHA-256: {initial_hash}\n"
++            f"Current SHA-256: {after_hash}"
++        )

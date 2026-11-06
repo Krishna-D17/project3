@@ -1,0 +1,1647 @@
+--- /dev/null
++++ b/provenance/event_serialization.py
+@@ -0,0 +1,512 @@
++"""
++Deterministic Canonical Serialization for MediaProof Provenance-Ledger Events.
++
++Phase 2.1 & 2.1.1: Canonical Provenance Event Serialization
++
++Specification: MediaProof Canonical Event Serialization Format v1.0 (MediaProof-CES-1.0)
++
++IMPORTANT SPECIFICATION NOTICE:
++MediaProof-CES-1.0 is a deterministic, versioned, domain-specific canonical serialization format.
++It is explicitly NOT strict RFC 8785 (JSON Canonicalization Scheme / JCS). While it adopts core
++canonical JSON principles (lexicographical key sorting, whitespace elimination, UTF-8 encoding),
++it deliberately diverges from RFC 8785 in the following defined ways:
++1. Unicode NFC Normalization: All string keys and string values are normalized using Unicode
++   Normalization Form C (NFC) prior to serialization. (RFC 8785 explicitly forbids Unicode normalization).
++2. Normalization Collision Rejection: If two distinct keys in any dictionary normalize to the same
++   NFC string, MediaProof-CES-1.0 strictly rejects the event with an EventValidationError rather than
++   silently overwriting or discarding data.
++3. Strict Missing vs. Null Policy: Top-level optional fields set to None are omitted from canonical
++   output (ensuring explicit None and omitted fields produce identical bytes), while payload and
++   metadata dictionaries preserve explicit None as JSON `null`.
++4. Domain Validation & Normalization: Timestamps must be timezone-aware and are normalized to canonical
++   UTC ISO 8601 strings ending in 'Z'. Fractional seconds are supported up to 6 digits (microsecond precision).
++   Timestamps with >6 fractional-second digits (including trailing zeroes beyond 6 digits) are strictly rejected
++   with EventValidationError to prevent silent truncation. Non-finite floats (NaN, Infinity, -Infinity) are
++   strictly rejected. Negative float zero (-0.0) is normalized to positive zero (0.0). Python's standard shortest
++   round-trip float serialization is used.
++5. Subsystem Isolation: Module contains zero database connections, zero network operations, and zero
++   coupling to media analysis or watermark verification.
++"""
++
++from dataclasses import asdict, dataclass
++from datetime import datetime, timezone
++import hashlib
++import json
++import math
++import re
++from typing import Any, Dict, List, Optional, Set, Union
++import unicodedata
++
++# ------------------------------------------------------------------------------
++# Version & Field Constants
++# ------------------------------------------------------------------------------
++
++CURRENT_SCHEMA_VERSION = "1.0"
++SUPPORTED_SCHEMA_VERSIONS: Set[str] = {CURRENT_SCHEMA_VERSION}
++
++# Regex patterns for structural validation
++HEX_64_PATTERN = re.compile(r"^[0-9a-f]{64}$")
++EVENT_TYPE_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
++STRICT_TIMESTAMP_REGEX = re.compile(
++    r"^(?P<datetime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(?P<frac>\d+))?(?P<tz>Z|[+-]\d{2}:\d{2})$"
++)
++
++REQUIRED_TOP_LEVEL_FIELDS: Set[str] = {
++    "schema_version",
++    "event_id",
++    "event_type",
++    "timestamp_utc",
++    "asset_id",
++    "payload",
++}
++
++OPTIONAL_TOP_LEVEL_FIELDS: Set[str] = {
++    "sequence_number",
++    "prev_hash",
++    "parent_event_id",
++    "signer_key_id",
++    "metadata",
++}
++
++ALLOWED_TOP_LEVEL_FIELDS: Set[str] = REQUIRED_TOP_LEVEL_FIELDS | OPTIONAL_TOP_LEVEL_FIELDS
++
++
++# ------------------------------------------------------------------------------
++# Exception Hierarchy
++# ------------------------------------------------------------------------------
++
++class ProvenanceEventError(Exception):
++    """Base exception for all provenance event errors."""
++
++
++class EventValidationError(ProvenanceEventError):
++    """Raised when an event fails schema, structural, or value validation."""
++
++
++class UnsupportedSchemaVersionError(EventValidationError):
++    """Raised when an event specifies an unsupported or malformed schema version."""
++
++
++# ------------------------------------------------------------------------------
++# Dataclass Definition
++# ------------------------------------------------------------------------------
++
++@dataclass(frozen=True)
++class ProvenanceEvent:
++    """
++    Immutable representation of a versioned provenance ledger event.
++    """
++    event_id: str
++    event_type: str
++    timestamp_utc: str
++    asset_id: str
++    payload: Dict[str, Any]
++    schema_version: str = CURRENT_SCHEMA_VERSION
++    sequence_number: Optional[int] = None
++    prev_hash: Optional[str] = None
++    parent_event_id: Optional[str] = None
++    signer_key_id: Optional[str] = None
++    metadata: Optional[Dict[str, Any]] = None
++
++    def to_dict(self, include_nulls: bool = False) -> Dict[str, Any]:
++        """
++        Converts event to a dictionary representation.
++        If include_nulls is False, optional fields with None value are omitted.
++        """
++        d: Dict[str, Any] = {
++            "schema_version": self.schema_version,
++            "event_id": self.event_id,
++            "event_type": self.event_type,
++            "timestamp_utc": self.timestamp_utc,
++            "asset_id": self.asset_id,
++            "payload": self.payload,
++        }
++        if self.sequence_number is not None or include_nulls:
++            d["sequence_number"] = self.sequence_number
++        if self.prev_hash is not None or include_nulls:
++            d["prev_hash"] = self.prev_hash
++        if self.parent_event_id is not None or include_nulls:
++            d["parent_event_id"] = self.parent_event_id
++        if self.signer_key_id is not None or include_nulls:
++            d["signer_key_id"] = self.signer_key_id
++        if self.metadata is not None or include_nulls:
++            d["metadata"] = self.metadata
++        return d
++
++    def to_canonical_dict(self) -> Dict[str, Any]:
++        """Returns the canonicalized dictionary ready for deterministic serialization."""
++        return canonicalize_event_dict(self)
++
++    def to_canonical_bytes(self) -> bytes:
++        """Returns the canonical UTF-8 bytes for this event."""
++        return canonical_serialize_event(self)
++
++    def calculate_hash(self) -> str:
++        """Calculates and returns the SHA-256 hex digest over this event's canonical bytes."""
++        return calculate_event_hash(self)
++
++
++# ------------------------------------------------------------------------------
++# Normalization & Validation Helpers
++# ------------------------------------------------------------------------------
++
++def normalize_timestamp_utc(ts: Union[str, datetime]) -> str:
++    """
++    Validates and normalizes a timestamp into canonical UTC ISO 8601 string format ending in 'Z'.
++
++    Rules (MediaProof-CES-1.0):
++    - Strict grammar: YYYY-MM-DDTHH:MM:SS[.ffffff](Z|±HH:MM)
++    - Validates the entire input against strict grammar before passing to parser.
++    - Rejects whitespace (leading, trailing, interior), trailing text, and non-conforming characters.
++    - Timezone offset must be 'Z' or '±HH:MM'. Abbreviated offsets (e.g. '+05'), unseparated offsets
++      (e.g. '+0530'), offsets with seconds (e.g. '+05:30:00'), and malformed offsets are rejected.
++    - Fractional seconds:
++      - Supported up to 6 digits (microsecond precision) prefixed with a decimal point '.'.
++      - Fractional seconds with > 6 digits (including trailing zeroes beyond 6 digits) are strictly
++        rejected with EventValidationError to prevent silent precision loss / truncation.
++      - Comma fraction separators and malformed fractions are strictly rejected.
++    - Calendar and clock validity (impossible dates, leap years, 0..23 hours, 0..59 minutes/seconds,
++      and valid timezone ranges) are strictly enforced.
++    - Output format: 'YYYY-MM-DDTHH:MM:SSZ' (zero microseconds) or
++                     'YYYY-MM-DDTHH:MM:SS.ffffffZ' (non-zero microseconds).
++    """
++    if isinstance(ts, datetime):
++        if ts.tzinfo is None:
++            raise EventValidationError("Datetime object must be timezone-aware (UTC).")
++        dt_utc = ts.astimezone(timezone.utc)
++    elif isinstance(ts, str):
++        # 1. Reject whitespace anywhere in the string
++        if re.search(r"\s", ts):
++            raise EventValidationError(f"Timestamp '{ts}' contains whitespace; strict ISO 8601 grammar required.")
++
++        # 2. Match against exact grammar
++        m = STRICT_TIMESTAMP_REGEX.match(ts)
++        if not m:
++            if "T" not in ts:
++                raise EventValidationError(f"Timestamp '{ts}' must be in ISO 8601 format with 'T' date/time separator.")
++            if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$", ts):
++                raise EventValidationError(f"Timestamp '{ts}' lacks timezone information; explicit UTC offset ('Z' or '±HH:MM') required.")
++            if "," in ts:
++                raise EventValidationError(f"Timestamp '{ts}' contains invalid fraction separator ','; decimal point '.' required.")
++            raise EventValidationError(
++                f"Timestamp '{ts}' does not conform to strict MediaProof-CES-1.0 grammar 'YYYY-MM-DDTHH:MM:SS[.ffffff](Z|±HH:MM)'."
++            )
++
++        frac = m.group("frac")
++        if frac is not None and len(frac) > 6:
++            raise EventValidationError(
++                f"Timestamp '{ts}' exceeds maximum supported precision of 6 fractional-second digits "
++                f"({len(frac)} digits provided). Silent truncation is not permitted in MediaProof-CES-1.0."
++            )
++
++        iso_to_parse = ts[:-1] + "+00:00" if ts.endswith("Z") else ts
++        try:
++            dt = datetime.fromisoformat(iso_to_parse)
++        except Exception as e:
++            raise EventValidationError(f"Invalid calendar date, time, or offset in timestamp '{ts}': {e}") from e
++
++        if dt.tzinfo is None:
++            raise EventValidationError(f"Timestamp '{ts}' lacks timezone information; explicit UTC required.")
++        dt_utc = dt.astimezone(timezone.utc)
++    else:
++        raise EventValidationError(f"Timestamp must be an ISO 8601 string or datetime object, got {type(ts).__name__}.")
++
++    if dt_utc.microsecond == 0:
++        return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
++    return dt_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
++
++
++def _normalize_value(val: Any) -> Any:
++    """
++    Recursively validates and canonicalizes values for deterministic JSON serialization:
++    - Strings: Normalized to Unicode NFC.
++    - Floats: Must be finite. -0.0 normalized to 0.0.
++    - Integers: Preserved (booleans strictly distinguished).
++    - Booleans: Preserved as True/False.
++    - Dictionaries: Keys must be strings, normalized to NFC, sorted lexicographically.
++    - Lists/Tuples: Converted to canonical list preserving order.
++    - None: Preserved as None (serializes to JSON null).
++    - Other types: Rejected.
++    """
++    if val is None:
++        return None
++    if isinstance(val, bool):
++        return val
++    if isinstance(val, int):
++        return val
++    if isinstance(val, float):
++        if math.isnan(val) or math.isinf(val):
++            raise EventValidationError(f"Non-finite float value '{val}' is not permitted in canonical event.")
++        if val == 0.0:
++            return 0.0
++        return val
++    if isinstance(val, str):
++        try:
++            val.encode("utf-8")
++        except UnicodeEncodeError as e:
++            raise EventValidationError(f"Invalid Unicode string containing surrogate code points: {e}") from e
++        return unicodedata.normalize("NFC", val)
++    if isinstance(val, dict):
++        norm_dict = {}
++        seen_keys: Dict[str, str] = {}
++        for k in sorted(val.keys()):
++            if not isinstance(k, str):
++                raise EventValidationError(f"Dictionary keys must be strings, got {type(k).__name__}: {k!r}")
++            try:
++                k.encode("utf-8")
++            except UnicodeEncodeError as e:
++                raise EventValidationError(f"Invalid Unicode key containing surrogate code points: {e}") from e
++            norm_k = unicodedata.normalize("NFC", k)
++            if norm_k in seen_keys:
++                raise EventValidationError(
++                    f"Duplicate key collision after Unicode NFC normalization: "
++                    f"keys {seen_keys[norm_k]!r} and {k!r} both normalize to {norm_k!r}."
++                )
++            seen_keys[norm_k] = k
++            norm_dict[norm_k] = _normalize_value(val[k])
++        return norm_dict
++    if isinstance(val, (list, tuple)):
++        return [_normalize_value(item) for item in val]
++
++    raise EventValidationError(f"Unsupported value type in canonical event: {type(val).__name__} ({val!r})")
++
++
++# ------------------------------------------------------------------------------
++# Core Public API
++# ------------------------------------------------------------------------------
++
++def validate_event(event: Union[ProvenanceEvent, Dict[str, Any]]) -> ProvenanceEvent:
++    """
++    Validates a provenance event against schema and structural constraints.
++
++    Args:
++        event: Either a ProvenanceEvent instance or a dictionary representing an event.
++
++    Returns:
++        A validated, normalized ProvenanceEvent instance.
++
++    Raises:
++        UnsupportedSchemaVersionError: If schema_version is unsupported.
++        EventValidationError: If any required field is missing, invalid, or malformed.
++    """
++    if isinstance(event, ProvenanceEvent):
++        raw: Dict[str, Any] = {
++            "schema_version": event.schema_version,
++            "event_id": event.event_id,
++            "event_type": event.event_type,
++            "timestamp_utc": event.timestamp_utc,
++            "asset_id": event.asset_id,
++            "payload": event.payload,
++            "sequence_number": event.sequence_number,
++            "prev_hash": event.prev_hash,
++            "parent_event_id": event.parent_event_id,
++            "signer_key_id": event.signer_key_id,
++            "metadata": event.metadata,
++        }
++    elif isinstance(event, dict):
++        raw = {}
++        seen_top_keys: Dict[str, str] = {}
++        for k, v in event.items():
++            if not isinstance(k, str):
++                raise EventValidationError(f"Top-level event keys must be strings, got {type(k).__name__}: {k!r}")
++            try:
++                k.encode("utf-8")
++            except UnicodeEncodeError as e:
++                raise EventValidationError(f"Invalid Unicode top-level key containing surrogate code points: {e}") from e
++            norm_k = unicodedata.normalize("NFC", k)
++            if norm_k in seen_top_keys:
++                raise EventValidationError(
++                    f"Duplicate top-level key collision after Unicode NFC normalization: "
++                    f"keys {seen_top_keys[norm_k]!r} and {k!r} both normalize to {norm_k!r}."
++                )
++            seen_top_keys[norm_k] = k
++            raw[norm_k] = v
++    else:
++        raise EventValidationError(f"Event must be a ProvenanceEvent or dict, got {type(event).__name__}.")
++
++    # 1. Check for unrecognized top-level fields
++    extra_fields = set(raw.keys()) - ALLOWED_TOP_LEVEL_FIELDS
++    if extra_fields:
++        raise EventValidationError(f"Unrecognized top-level field(s) in event: {sorted(extra_fields)}")
++
++    # 2. Check for missing required top-level fields
++    missing_fields = REQUIRED_TOP_LEVEL_FIELDS - set(raw.keys())
++    if missing_fields:
++        raise EventValidationError(f"Missing required top-level field(s) in event: {sorted(missing_fields)}")
++
++    # 3. Validate schema_version
++    version = raw.get("schema_version")
++    if not isinstance(version, str):
++        raise UnsupportedSchemaVersionError(
++            f"schema_version must be a string, got {type(version).__name__}: {version!r}"
++        )
++    if version not in SUPPORTED_SCHEMA_VERSIONS:
++        raise UnsupportedSchemaVersionError(
++            f"Unsupported schema_version '{version}'. Supported versions: {sorted(SUPPORTED_SCHEMA_VERSIONS)}"
++        )
++
++    # 4. Validate event_id
++    event_id = raw.get("event_id")
++    if not isinstance(event_id, str) or not event_id.strip():
++        raise EventValidationError("event_id must be a non-empty string.")
++    norm_event_id = unicodedata.normalize("NFC", event_id.strip())
++
++    # 5. Validate event_type
++    event_type = raw.get("event_type")
++    if not isinstance(event_type, str) or not event_type.strip():
++        raise EventValidationError("event_type must be a non-empty string.")
++    clean_event_type = event_type.strip()
++    if not EVENT_TYPE_PATTERN.match(clean_event_type):
++        raise EventValidationError(
++            f"event_type '{event_type}' is invalid; must contain only alphanumeric characters and underscores."
++        )
++    norm_event_type = unicodedata.normalize("NFC", clean_event_type)
++
++    # 6. Validate timestamp_utc
++    raw_ts = raw.get("timestamp_utc")
++    norm_ts = normalize_timestamp_utc(raw_ts)
++
++    # 7. Validate asset_id
++    asset_id = raw.get("asset_id")
++    if not isinstance(asset_id, str) or not asset_id.strip():
++        raise EventValidationError("asset_id must be a non-empty string.")
++    norm_asset_id = unicodedata.normalize("NFC", asset_id.strip())
++
++    # 8. Validate payload
++    payload = raw.get("payload")
++    if not isinstance(payload, dict):
++        raise EventValidationError(f"payload must be a dictionary, got {type(payload).__name__}.")
++    norm_payload = _normalize_value(payload)
++
++    # 9. Validate optional sequence_number
++    seq_num = raw.get("sequence_number")
++    if seq_num is not None:
++        if isinstance(seq_num, bool) or not isinstance(seq_num, int):
++            raise EventValidationError(f"sequence_number must be an integer, got {type(seq_num).__name__}: {seq_num!r}")
++        if seq_num < 0:
++            raise EventValidationError(f"sequence_number cannot be negative, got {seq_num}.")
++
++    # 10. Validate optional prev_hash
++    prev_hash = raw.get("prev_hash")
++    norm_prev_hash: Optional[str] = None
++    if prev_hash is not None:
++        if not isinstance(prev_hash, str) or not HEX_64_PATTERN.match(prev_hash):
++            raise EventValidationError(
++                f"prev_hash '{prev_hash}' is invalid; must be a 64-character lowercase hexadecimal SHA-256 hash."
++            )
++        norm_prev_hash = prev_hash
++
++    # 11. Validate optional parent_event_id
++    parent_event_id = raw.get("parent_event_id")
++    norm_parent_id: Optional[str] = None
++    if parent_event_id is not None:
++        if not isinstance(parent_event_id, str) or not parent_event_id.strip():
++            raise EventValidationError("parent_event_id must be a non-empty string if specified.")
++        norm_parent_id = unicodedata.normalize("NFC", parent_event_id.strip())
++
++    # 12. Validate optional signer_key_id
++    signer_key_id = raw.get("signer_key_id")
++    norm_signer_id: Optional[str] = None
++    if signer_key_id is not None:
++        if not isinstance(signer_key_id, str) or not signer_key_id.strip():
++            raise EventValidationError("signer_key_id must be a non-empty string if specified.")
++        norm_signer_id = unicodedata.normalize("NFC", signer_key_id.strip())
++
++    # 13. Validate optional metadata
++    metadata = raw.get("metadata")
++    norm_metadata: Optional[Dict[str, Any]] = None
++    if metadata is not None:
++        if not isinstance(metadata, dict):
++            raise EventValidationError(f"metadata must be a dictionary, got {type(metadata).__name__}.")
++        norm_metadata = _normalize_value(metadata)
++
++    return ProvenanceEvent(
++        schema_version=version,
++        event_id=norm_event_id,
++        event_type=norm_event_type,
++        timestamp_utc=norm_ts,
++        asset_id=norm_asset_id,
++        payload=norm_payload,
++        sequence_number=seq_num,
++        prev_hash=norm_prev_hash,
++        parent_event_id=norm_parent_id,
++        signer_key_id=norm_signer_id,
++        metadata=norm_metadata,
++    )
++
++
++def canonicalize_event_dict(event: Union[ProvenanceEvent, Dict[str, Any]]) -> Dict[str, Any]:
++    """
++    Validates and canonicalizes an event into a clean, normalized Python dictionary.
++
++    Optional fields with None values are omitted to ensure deterministic representation.
++    All keys and nested keys are lexicographically sorted, strings are NFC normalized,
++    and timestamps follow canonical UTC ISO 8601 formatting.
++    """
++    validated = validate_event(event)
++
++    canon: Dict[str, Any] = {
++        "asset_id": validated.asset_id,
++        "event_id": validated.event_id,
++        "event_type": validated.event_type,
++        "payload": validated.payload,
++        "schema_version": validated.schema_version,
++        "timestamp_utc": validated.timestamp_utc,
++    }
++
++    if validated.sequence_number is not None:
++        canon["sequence_number"] = validated.sequence_number
++    if validated.prev_hash is not None:
++        canon["prev_hash"] = validated.prev_hash
++    if validated.parent_event_id is not None:
++        canon["parent_event_id"] = validated.parent_event_id
++    if validated.signer_key_id is not None:
++        canon["signer_key_id"] = validated.signer_key_id
++    if validated.metadata is not None:
++        canon["metadata"] = validated.metadata
++
++    # Re-sort top-level keys lexicographically
++    return {k: canon[k] for k in sorted(canon.keys())}
++
++
++def canonical_serialize_event(event: Union[ProvenanceEvent, Dict[str, Any]]) -> bytes:
++    """
++    Serializes a provenance event into deterministic, canonical UTF-8 bytes
++    according to MediaProof-CES-1.0.
++
++    - Keys sorted lexicographically at all levels.
++    - No whitespace between tokens (separators: ',' and ':').
++    - Unicode NFC normalized strings encoded in UTF-8 without unnecessary escapes.
++    - Non-finite floats rejected.
++    """
++    canon_dict = canonicalize_event_dict(event)
++    json_str = json.dumps(
++        canon_dict,
++        sort_keys=True,
++        separators=(",", ":"),
++        ensure_ascii=False,
++        allow_nan=False,
++    )
++    try:
++        return json_str.encode("utf-8")
++    except UnicodeEncodeError as e:
++        raise EventValidationError(f"UTF-8 encoding failed for canonical event: {e}") from e
++
++
++def calculate_event_hash(event: Union[ProvenanceEvent, Dict[str, Any]]) -> str:
++    """
++    Calculates the canonical SHA-256 hash of a provenance event.
++
++    Args:
++        event: Either a ProvenanceEvent instance or a dictionary.
++
++    Returns:
++        64-character lowercase hexadecimal SHA-256 digest string.
++    """
++    canonical_bytes = canonical_serialize_event(event)
++    return hashlib.sha256(canonical_bytes).hexdigest().lower()
++
++
++def event_from_dict(d: Dict[str, Any]) -> ProvenanceEvent:
++    """Convenience factory function: validates and creates a ProvenanceEvent from a dictionary."""
++    return validate_event(d)
+--- a/provenance/__init__.py
++++ b/provenance/__init__.py
+@@ -1,2 +1,27 @@
+ # Package initialization for provenance module
+ 
++from provenance.event_serialization import (
++    CURRENT_SCHEMA_VERSION,
++    EventValidationError,
++    ProvenanceEvent,
++    ProvenanceEventError,
++    UnsupportedSchemaVersionError,
++    calculate_event_hash,
++    canonical_serialize_event,
++    canonicalize_event_dict,
++    event_from_dict,
++    validate_event,
++)
++
++__all__ = [
++    "CURRENT_SCHEMA_VERSION",
++    "ProvenanceEvent",
++    "ProvenanceEventError",
++    "EventValidationError",
++    "UnsupportedSchemaVersionError",
++    "validate_event",
++    "canonicalize_event_dict",
++    "canonical_serialize_event",
++    "calculate_event_hash",
++    "event_from_dict",
++]
+--- /dev/null
++++ b/tests/test_event_serialization.py
+@@ -0,0 +1,1099 @@
++"""
++Comprehensive Tests for Canonical Provenance Event Serialization (Phase 2.1).
++
++Covers all required behaviors:
++1. Equivalent valid events produce byte-identical canonical serialization regardless of key order.
++2. Changes to any meaningful field produce different canonical bytes and SHA-256 hashes.
++3. Unicode NFC normalization guarantees identical bytes for composed vs decomposed forms.
++4. Timestamp parsing, validation, and UTC canonicalization (including microsecond edge cases).
++5. Numeric handling: exact integer preservation, boolean distinction, float finite validation, -0.0 normalization.
++6. Missing vs. null value policy: optional top-level None fields normalized by omission; payload nulls preserved.
++7. Schema version enforcement: strictly accepts "1.0", explicitly rejects unsupported versions.
++8. Invalid events fail explicitly with descriptive exceptions (never silently producing valid output).
++9. Zero mutation of production database.
++"""
++
++from datetime import datetime, timezone
++import hashlib
++import json
++import math
++from pathlib import Path
++import pytest
++
++from provenance.event_serialization import (
++    CURRENT_SCHEMA_VERSION,
++    EventValidationError,
++    ProvenanceEvent,
++    ProvenanceEventError,
++    UnsupportedSchemaVersionError,
++    calculate_event_hash,
++    canonical_serialize_event,
++    canonicalize_event_dict,
++    event_from_dict,
++    normalize_timestamp_utc,
++    validate_event,
++)
++
++
++# ==============================================================================
++# 1. Equivalence & Determinism Tests
++# ==============================================================================
++
++def test_equivalent_events_produce_byte_identical_serialization():
++    """
++    Events with identical semantic data must produce byte-identical canonical
++    bytes and identical hashes regardless of dictionary key insertion order.
++    """
++    event_dict_1 = {
++        "schema_version": "1.0",
++        "event_id": "EVT-001",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:15:30Z",
++        "asset_id": "MP-abc-123",
++        "payload": {
++            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
++            "file_size_bytes": 1048576,
++            "media_type": "video/mp4",
++        },
++    }
++
++    # Different key order at top level and nested in payload
++    event_dict_2 = {
++        "payload": {
++            "media_type": "video/mp4",
++            "file_size_bytes": 1048576,
++            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
++        },
++        "asset_id": "MP-abc-123",
++        "timestamp_utc": "2026-10-19T10:15:30Z",
++        "event_type": "ASSET_REGISTRATION",
++        "event_id": "EVT-001",
++        "schema_version": "1.0",
++    }
++
++    bytes_1 = canonical_serialize_event(event_dict_1)
++    bytes_2 = canonical_serialize_event(event_dict_2)
++    hash_1 = calculate_event_hash(event_dict_1)
++    hash_2 = calculate_event_hash(event_dict_2)
++
++    assert bytes_1 == bytes_2
++    assert hash_1 == hash_2
++    assert len(hash_1) == 64
++
++    # Dataclass instances from both dicts also produce identical results
++    event_obj_1 = event_from_dict(event_dict_1)
++    event_obj_2 = event_from_dict(event_dict_2)
++    assert event_obj_1.to_canonical_bytes() == bytes_1
++    assert event_obj_2.to_canonical_bytes() == bytes_2
++    assert event_obj_1.calculate_hash() == hash_1
++
++
++def test_repeated_serialization_repeatability():
++    """Serialization must be perfectly repeatable across repeated invocations."""
++    event = ProvenanceEvent(
++        event_id="EVT-REPEAT-001",
++        event_type="MEDIA_VERIFICATION",
++        timestamp_utc="2026-10-19T12:00:00Z",
++        asset_id="MP-rep-999",
++        payload={"verified": True, "score": 0.985},
++        sequence_number=42,
++    )
++
++    first_bytes = event.to_canonical_bytes()
++    first_hash = event.calculate_hash()
++
++    for _ in range(50):
++        assert event.to_canonical_bytes() == first_bytes
++        assert event.calculate_hash() == first_hash
++
++
++# ==============================================================================
++# 2. Meaningful Field Change Sensitivity
++# ==============================================================================
++
++def test_meaningful_field_changes_produce_different_hashes():
++    """Modifying any meaningful field must change the canonical bytes and hash."""
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-BASE",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-BASE",
++        "payload": {"value": 100},
++    }
++    base_hash = calculate_event_hash(base)
++
++    mutations = [
++        ("event_id", {**base, "event_id": "EVT-OTHER"}),
++        ("event_type", {**base, "event_type": "MEDIA_VERIFICATION"}),
++        ("timestamp_utc", {**base, "timestamp_utc": "2026-10-19T10:00:01Z"}),
++        ("asset_id", {**base, "asset_id": "MP-OTHER"}),
++        ("payload_value", {**base, "payload": {"value": 101}}),
++        ("payload_key", {**base, "payload": {"value2": 100}}),
++        ("sequence_number", {**base, "sequence_number": 1}),
++        ("prev_hash", {**base, "prev_hash": "a" * 64}),
++        ("parent_event_id", {**base, "parent_event_id": "EVT-PARENT"}),
++        ("signer_key_id", {**base, "signer_key_id": "KEY-ED25519-01"}),
++        ("metadata", {**base, "metadata": {"note": "test"}}),
++    ]
++
++    for label, mutated in mutations:
++        mutated_hash = calculate_event_hash(mutated)
++        assert mutated_hash != base_hash, f"Hash collision on mutation: {label}"
++
++
++# ==============================================================================
++# 3. Unicode Normalization & UTF-8 Encoding
++# ==============================================================================
++
++def test_unicode_nfc_normalization():
++    """
++    Unicode NFC normalization must ensure that composed and decomposed forms
++    produce identical canonical bytes and hashes.
++    """
++    # Decomposed: 'e' + combining acute accent (\u0065\u0301)
++    # Composed: precomposed 'é' (\u00e9)
++    decomposed_str = "caf\u0065\u0301"
++    composed_str = "caf\u00e9"
++    assert decomposed_str != composed_str
++
++    event_decomposed = {
++        "schema_version": "1.0",
++        "event_id": f"EVT-{decomposed_str}",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": f"MP-{decomposed_str}",
++        "payload": {decomposed_str: decomposed_str},
++    }
++
++    event_composed = {
++        "schema_version": "1.0",
++        "event_id": f"EVT-{composed_str}",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": f"MP-{composed_str}",
++        "payload": {composed_str: composed_str},
++    }
++
++    bytes_decomp = canonical_serialize_event(event_decomposed)
++    bytes_comp = canonical_serialize_event(event_composed)
++
++    assert bytes_decomp == bytes_comp
++    assert calculate_event_hash(event_decomposed) == calculate_event_hash(event_composed)
++
++
++def test_utf8_unencoded_characters():
++    """Non-ASCII characters must be encoded directly in UTF-8 without unicode escapes."""
++    event = {
++        "schema_version": "1.0",
++        "event_id": "EVT-UNICODE",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-INTERNATIONAL",
++        "payload": {
++            "greek": "Ελλάδα",
++            "japanese": "メディア検証",
++            "symbols": "🔒🛡️",
++        },
++    }
++
++    raw_bytes = canonical_serialize_event(event)
++    text = raw_bytes.decode("utf-8")
++
++    # Should not contain escaped representations like \u0395 or \u30e1
++    assert "\\u" not in text
++    assert "Ελλάδα" in text
++    assert "メディア検証" in text
++
++
++# ==============================================================================
++# 4. Timestamp Canonicalization
++# ==============================================================================
++
++def test_timestamp_normalization_variants():
++    """
++    Different representations of the same UTC timestamp must normalize to
++    the exact same canonical string and bytes.
++    """
++    ts_z = "2026-10-19T15:30:45Z"
++    ts_offset = "2026-10-19T15:30:45+00:00"
++    dt_obj = datetime(2026, 10, 19, 15, 30, 45, tzinfo=timezone.utc)
++
++    norm_z = normalize_timestamp_utc(ts_z)
++    norm_offset = normalize_timestamp_utc(ts_offset)
++    norm_dt = normalize_timestamp_utc(dt_obj)
++
++    assert norm_z == "2026-10-19T15:30:45Z"
++    assert norm_offset == norm_z
++    assert norm_dt == norm_z
++
++
++def test_timestamp_microsecond_formatting():
++    """Timestamps with microseconds must format with .ffffffZ precision."""
++    ts_micro = "2026-10-19T15:30:45.123456Z"
++    norm = normalize_timestamp_utc(ts_micro)
++    assert norm == "2026-10-19T15:30:45.123456Z"
++
++
++def test_timestamp_naive_rejected():
++    """Naive timestamps lacking timezone offset must be strictly rejected."""
++    naive_str = "2026-10-19T15:30:45"
++    with pytest.raises(EventValidationError, match="lacks timezone information"):
++        normalize_timestamp_utc(naive_str)
++
++    naive_dt = datetime(2026, 10, 19, 15, 30, 45)
++    with pytest.raises(EventValidationError, match="must be timezone-aware"):
++        normalize_timestamp_utc(naive_dt)
++
++
++def test_timestamp_malformed_rejected():
++    """Malformed timestamp values must be rejected."""
++    for bad_ts in ["", "not-a-timestamp", "2026-99-99T99:99:99Z", 123456789, None]:
++        with pytest.raises(EventValidationError):
++            normalize_timestamp_utc(bad_ts)
++
++
++# ==============================================================================
++# 5. Numeric Values & Edge Cases
++# ==============================================================================
++
++def test_numeric_integer_and_boolean_distinction():
++    """Integers and booleans must be strictly distinguished and preserved."""
++    event = {
++        "schema_version": "1.0",
++        "event_id": "EVT-NUM",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-NUM",
++        "payload": {
++            "flag_true": True,
++            "flag_false": False,
++            "int_one": 1,
++            "int_zero": 0,
++            "int_large": 9223372036854775807,
++        },
++    }
++
++    raw_bytes = canonical_serialize_event(event)
++    text = raw_bytes.decode("utf-8")
++
++    assert '"flag_true":true' in text
++    assert '"flag_false":false' in text
++    assert '"int_one":1' in text
++    assert '"int_zero":0' in text
++    assert '"int_large":9223372036854775807' in text
++
++
++def test_float_negative_zero_normalized():
++    """Negative float zero (-0.0) must be normalized to positive zero (0.0)."""
++    event_pos = {
++        "schema_version": "1.0",
++        "event_id": "EVT-ZERO",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-ZERO",
++        "payload": {"drift_delta": 0.0},
++    }
++    event_neg = {
++        "schema_version": "1.0",
++        "event_id": "EVT-ZERO",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-ZERO",
++        "payload": {"drift_delta": -0.0},
++    }
++
++    bytes_pos = canonical_serialize_event(event_pos)
++    bytes_neg = canonical_serialize_event(event_neg)
++
++    assert bytes_pos == bytes_neg
++    assert b'"drift_delta":0.0' in bytes_pos
++    assert b"-0.0" not in bytes_neg
++
++
++def test_non_finite_floats_rejected():
++    """NaN, Infinity, and -Infinity anywhere in payload or metadata must be rejected."""
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-FLOAT",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-FLOAT",
++    }
++
++    for bad_val in [float("nan"), float("inf"), float("-inf")]:
++        with pytest.raises(EventValidationError, match="Non-finite float value"):
++            canonical_serialize_event({**base, "payload": {"metric": bad_val}})
++
++        with pytest.raises(EventValidationError, match="Non-finite float value"):
++            canonical_serialize_event({
++                **base,
++                "payload": {"valid": 1},
++                "metadata": {"bad_metric": bad_val},
++            })
++
++
++# ==============================================================================
++# 6. Missing vs. Null Value Policy
++# ==============================================================================
++
++def test_top_level_optional_none_fields_omitted():
++    """
++    Top-level optional fields set to None must serialize identically to
++    when those optional fields are omitted entirely.
++    """
++    event_omitted = {
++        "schema_version": "1.0",
++        "event_id": "EVT-OPT",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-OPT",
++        "payload": {"size": 500},
++    }
++
++    event_with_nones = {
++        **event_omitted,
++        "sequence_number": None,
++        "prev_hash": None,
++        "parent_event_id": None,
++        "signer_key_id": None,
++        "metadata": None,
++    }
++
++    bytes_omitted = canonical_serialize_event(event_omitted)
++    bytes_with_nones = canonical_serialize_event(event_with_nones)
++
++    assert bytes_omitted == bytes_with_nones
++    assert calculate_event_hash(event_omitted) == calculate_event_hash(event_with_nones)
++    assert b"prev_hash" not in bytes_with_nones
++    assert b"sequence_number" not in bytes_with_nones
++
++
++def test_payload_explicit_null_is_preserved():
++    """
++    Inside the payload, explicit None must be preserved as JSON null,
++    distinguishing it from an omitted key.
++    """
++    event_with_null = {
++        "schema_version": "1.0",
++        "event_id": "EVT-PAYLOAD",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-PAYLOAD",
++        "payload": {"watermark": None, "codec": "h264"},
++    }
++
++    event_without_null = {
++        "schema_version": "1.0",
++        "event_id": "EVT-PAYLOAD",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-PAYLOAD",
++        "payload": {"codec": "h264"},
++    }
++
++    bytes_with_null = canonical_serialize_event(event_with_null)
++    bytes_without_null = canonical_serialize_event(event_without_null)
++
++    assert bytes_with_null != bytes_without_null
++    assert b'"watermark":null' in bytes_with_null
++    assert b"watermark" not in bytes_without_null
++
++
++def test_payload_empty_collections_preserved():
++    """Empty dictionaries and empty lists inside payload must be preserved."""
++    event = {
++        "schema_version": "1.0",
++        "event_id": "EVT-EMPTY",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-EMPTY",
++        "payload": {
++            "empty_dict": {},
++            "empty_list": [],
++        },
++    }
++
++    raw_bytes = canonical_serialize_event(event)
++    text = raw_bytes.decode("utf-8")
++    assert '"empty_dict":{}' in text
++    assert '"empty_list":[]' in text
++
++
++# ==============================================================================
++# 7. Schema Version Enforcement
++# ==============================================================================
++
++def test_schema_version_supported():
++    """Schema version '1.0' must be accepted."""
++    event = {
++        "schema_version": "1.0",
++        "event_id": "EVT-VER",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-VER",
++        "payload": {"test": 1},
++    }
++    validated = validate_event(event)
++    assert validated.schema_version == CURRENT_SCHEMA_VERSION
++
++
++@pytest.mark.parametrize("unsupported_version", ["2.0", "0.9", "1.0.0", "", "v1", 1, None, True])
++def test_schema_version_unsupported_rejected(unsupported_version):
++    """Unsupported or non-string schema versions must raise UnsupportedSchemaVersionError."""
++    event = {
++        "schema_version": unsupported_version,
++        "event_id": "EVT-VER",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-VER",
++        "payload": {"test": 1},
++    }
++    with pytest.raises(UnsupportedSchemaVersionError):
++        validate_event(event)
++
++
++# ==============================================================================
++# 8. Structural & Type Validation Failures
++# ==============================================================================
++
++def test_missing_required_fields_rejected():
++    """Missing any required top-level field must raise EventValidationError."""
++    valid_base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-REQ",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-REQ",
++        "payload": {"ok": 1},
++    }
++
++    for req_field in ["schema_version", "event_id", "event_type", "timestamp_utc", "asset_id", "payload"]:
++        incomplete = {k: v for k, v in valid_base.items() if k != req_field}
++        with pytest.raises(EventValidationError, match="Missing required"):
++            validate_event(incomplete)
++
++
++def test_unrecognized_top_level_fields_rejected():
++    """Unrecognized top-level fields must be strictly rejected."""
++    event_with_extra = {
++        "schema_version": "1.0",
++        "event_id": "EVT-EXTRA",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-EXTRA",
++        "payload": {"ok": 1},
++        "unexpected_field": "disallowed",
++    }
++    with pytest.raises(EventValidationError, match="Unrecognized top-level field"):
++        validate_event(event_with_extra)
++
++
++def test_malformed_event_type_rejected():
++    """event_type containing spaces, punctuation, or empty strings must be rejected."""
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-TYPE",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-TYPE",
++        "payload": {},
++    }
++
++    for bad_type in ["", "  ", "EVENT TYPE WITH SPACES", "EVENT@TYPE!", 123, None]:
++        with pytest.raises(EventValidationError):
++            validate_event({**base, "event_type": bad_type})
++
++
++def test_malformed_prev_hash_rejected():
++    """prev_hash must be exactly 64 lowercase hex characters."""
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-HASH",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-HASH",
++        "payload": {},
++    }
++
++    for bad_hash in [
++        "too_short",
++        "A" * 64,  # uppercase
++        "z" * 64,  # non-hex
++        "0" * 63,  # 63 chars
++        "0" * 65,  # 65 chars
++        123456,
++        "",
++    ]:
++        with pytest.raises(EventValidationError, match="prev_hash"):
++            validate_event({**base, "prev_hash": bad_hash})
++
++
++def test_malformed_sequence_number_rejected():
++    """sequence_number must be an integer >= 0 and not boolean."""
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-SEQ",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-SEQ",
++        "payload": {},
++    }
++
++    for bad_seq in [-1, True, False, 1.5, "1", []]:
++        with pytest.raises(EventValidationError, match="sequence_number"):
++            validate_event({**base, "sequence_number": bad_seq})
++
++
++def test_non_dict_payload_rejected():
++    """payload must be a dictionary."""
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-PAY",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-PAY",
++    }
++
++    for bad_payload in ["string", [1, 2, 3], 123, None, True]:
++        with pytest.raises(EventValidationError, match="payload must be a dictionary"):
++            validate_event({**base, "payload": bad_payload})
++
++
++def test_unsupported_value_type_in_payload_rejected():
++    """Unsupported data types (e.g. set, bytes, custom objects) must be rejected."""
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-OBJ",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-OBJ",
++    }
++
++    class CustomClass:
++        pass
++
++    for bad_obj in [{1, 2, 3}, b"raw bytes", CustomClass()]:
++        with pytest.raises(EventValidationError, match="Unsupported value type"):
++            canonical_serialize_event({**base, "payload": {"bad": bad_obj}})
++
++
++# ==============================================================================
++# 9. Production Database Protection
++# ==============================================================================
++
++def test_canonical_serialization_does_not_mutate_production_database():
++    """
++    Verifies that running serialization, validation, and hashing operations
++    never accesses, initializes, or modifies the production database.
++    """
++    prod_db = Path(__file__).resolve().parent.parent / "database" / "mediaproof.db"
++    assert prod_db.exists(), f"Production database not found at {prod_db}"
++    initial_hash = hashlib.sha256(prod_db.read_bytes()).hexdigest()
++
++    # Perform extensive serialization operations
++    for i in range(100):
++        evt = ProvenanceEvent(
++            event_id=f"EVT-PROD-TEST-{i}",
++            event_type="ASSET_REGISTRATION",
++            timestamp_utc="2026-10-19T12:00:00Z",
++            asset_id=f"MP-{i:04d}",
++            payload={"iteration": i, "data": "test"},
++            sequence_number=i,
++        )
++        b = evt.to_canonical_bytes()
++        h = evt.calculate_hash()
++        assert len(b) > 0
++        assert len(h) == 64
++
++    post_hash = hashlib.sha256(prod_db.read_bytes()).hexdigest()
++    assert initial_hash == post_hash, "Production database modified by event serialization!"
++
++
++# ==============================================================================
++# 10. Phase 2.1.1 Audit Edge Cases & MediaProof-CES-1.0 Golden Vectors
++# ==============================================================================
++
++def test_unicode_nfc_key_collision_rejected_in_payload():
++    """
++    If two distinct keys in a payload normalize to the identical NFC string,
++    serialization must strictly fail with EventValidationError rather than
++    silently overwriting or discarding data.
++    """
++    decomposed_key = "caf\u0065\u0301"
++    composed_key = "caf\u00e9"
++    assert decomposed_key != composed_key
++
++    event_with_collision = {
++        "schema_version": "1.0",
++        "event_id": "EVT-COLLISION-01",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-COLLISION",
++        "payload": {
++            decomposed_key: "value_decomposed",
++            composed_key: "value_composed",
++        },
++    }
++
++    with pytest.raises(EventValidationError, match="Duplicate key collision after Unicode NFC normalization"):
++        canonical_serialize_event(event_with_collision)
++
++
++def test_unicode_nfc_key_collision_rejected_at_top_level():
++    """
++    If two top-level keys in an input dictionary normalize to the same NFC string,
++    validation must strictly fail with EventValidationError.
++    """
++    decomposed_key = "tag_\u0065\u0301"  # 'e' + combining acute
++    composed_key = "tag_\u00e9"         # precomposed 'é'
++    assert decomposed_key != composed_key
++
++    raw_event = {
++        "schema_version": "1.0",
++        "event_id": "EVT-TOP-COLLISION",
++        "event_type": "ASSET_REGISTRATION",
++        "asset_id": "MP-TOP-COLLISION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "payload": {},
++        decomposed_key: "value1",
++        composed_key: "value2",
++    }
++
++    # In Python dict, decomposed_key and composed_key are distinct strings
++    assert len(raw_event) == 8
++
++    with pytest.raises(EventValidationError, match="Duplicate top-level key collision after Unicode NFC normalization"):
++        validate_event(raw_event)
++
++
++def test_numeric_exponent_and_large_integers():
++    """
++    Verifies that large integers and floats with exponent notation serialize
++    deterministically according to MediaProof-CES-1.0 rules.
++    """
++    event = {
++        "schema_version": "1.0",
++        "event_id": "EVT-NUM-EDGES",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-NUM-EDGES",
++        "payload": {
++            "large_int_64": 18446744073709551615,
++            "huge_int_128": 340282366920938463463374607431768211455,
++            "small_float_exp": 1e-05,
++            "large_float_exp": 1e+20,
++            "exact_boundary": 1.0,
++        },
++    }
++
++    raw_bytes = canonical_serialize_event(event)
++    text = raw_bytes.decode("utf-8")
++
++    assert '"large_int_64":18446744073709551615' in text
++    assert '"huge_int_128":340282366920938463463374607431768211455' in text
++    assert '"small_float_exp":1e-05' in text
++    assert '"large_float_exp":1e+20' in text
++    assert '"exact_boundary":1.0' in text
++
++
++def test_timezone_aware_timestamp_equivalence():
++    """
++    Different timezone-aware representations of the same UTC point in time
++    must normalize to the exact same canonical string, bytes, and hash.
++    """
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-TIME-EQ",
++        "event_type": "ASSET_REGISTRATION",
++        "asset_id": "MP-TIME-EQ",
++        "payload": {"test": 1},
++    }
++
++    # All of these represent 2026-10-19 10:00:00 UTC
++    ts_variants = [
++        "2026-10-19T10:00:00Z",
++        "2026-10-19T10:00:00+00:00",
++        "2026-10-19T12:00:00+02:00",
++        "2026-10-19T15:30:00+05:30",
++        "2026-10-19T06:00:00-04:00",
++        datetime(2026, 10, 19, 10, 0, 0, tzinfo=timezone.utc),
++    ]
++
++    canonical_bytes_set = set()
++    hash_set = set()
++
++    for ts in ts_variants:
++        ev = {**base, "timestamp_utc": ts}
++        b = canonical_serialize_event(ev)
++        h = calculate_event_hash(ev)
++        canonical_bytes_set.add(b)
++        hash_set.add(h)
++
++    # Exactly 1 unique byte sequence and hash must be produced
++    assert len(canonical_bytes_set) == 1
++    assert len(hash_set) == 1
++    assert b'"timestamp_utc":"2026-10-19T10:00:00Z"' in next(iter(canonical_bytes_set))
++
++
++def test_invalid_and_ambiguous_timestamps_fail_explicitly():
++    """
++    Invalid dates, ambiguous strings, or non-timezone-aware inputs must
++    fail explicitly with EventValidationError.
++    """
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-TIME-FAIL",
++        "event_type": "ASSET_REGISTRATION",
++        "asset_id": "MP-TIME-FAIL",
++        "payload": {},
++    }
++
++    invalid_timestamps = [
++        "2026-10-19T10:00:00",          # Naive string (no timezone)
++        "2026-02-30T10:00:00Z",         # Invalid calendar date (Feb 30)
++        "2026-13-01T10:00:00Z",         # Invalid month (13)
++        "2026-10-19T25:00:00Z",         # Invalid clock hour (25)
++        "2026-10-19T10:60:00Z",         # Invalid clock minute (60)
++        "2026-10-19T10:00:60Z",         # Invalid clock second (60)
++        "2026-10-19 10:00:00Z",         # Missing 'T' separator (space used)
++        " 2026-10-19T10:00:00Z",        # Leading whitespace
++        "2026-10-19T10:00:00Z ",        # Trailing whitespace
++        "2026-10-19T10:00:00Z\n",       # Trailing newline
++        "2026-10-19T10:00:00Z extra",   # Trailing text
++        "2026-10-19T10:00:00+05",       # Abbreviated timezone offset (+05)
++        "2026-10-19T10:00:00-08",       # Abbreviated timezone offset (-08)
++        "2026-10-19T10:00:00+0530",     # Unseparated timezone offset (+0530)
++        "2026-10-19T10:00:00+05:30:00", # Timezone offset with seconds
++        "2026-10-19T10:00:00+99:99",    # Malformed/out-of-range timezone offset
++        "2026-10-19T10:00:00+25:00",    # Out-of-range timezone hours (+25:00)
++        "yesterday",                    # Not ISO
++        "",                             # Empty
++        "   ",                          # Whitespace
++        1700000000,                     # Unix epoch integer (disallowed)
++        None,                           # None (disallowed for required field)
++    ]
++
++    for bad_ts in invalid_timestamps:
++        with pytest.raises(EventValidationError):
++            validate_event({**base, "timestamp_utc": bad_ts})
++
++
++def test_explicit_expected_byte_vectors_mediaproof_ces_1_0():
++    """
++    Golden Test Vectors for MediaProof-CES-1.0.
++    Locks down byte-for-byte canonical serialization and SHA-256 digests.
++    """
++    # Vector 1: Minimal Event (Required fields only)
++    vector_1 = {
++        "schema_version": "1.0",
++        "event_id": "EVT-VEC-001",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-ASSET-001",
++        "payload": {
++            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
++            "size": 1024,
++        },
++    }
++
++    expected_bytes_1 = (
++        b'{"asset_id":"MP-ASSET-001","event_id":"EVT-VEC-001","event_type":"ASSET_REGISTRATION",'
++        b'"payload":{"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","size":1024},'
++        b'"schema_version":"1.0","timestamp_utc":"2026-10-19T10:00:00Z"}'
++    )
++    expected_hash_1 = "349d0b9fa41896cc5085ae4be4326abeb77423af1332c1b541b8bc12abd3f1cf"
++
++    actual_bytes_1 = canonical_serialize_event(vector_1)
++    actual_hash_1 = calculate_event_hash(vector_1)
++
++    assert actual_bytes_1 == expected_bytes_1
++    assert actual_hash_1 == expected_hash_1
++
++    # Vector 2: Full Event (Optional fields populated, nested payload with nulls, booleans, sub-seconds)
++    vector_2 = {
++        "schema_version": "1.0",
++        "event_id": "EVT-VEC-002",
++        "event_type": "MEDIA_VERIFICATION",
++        "timestamp_utc": "2026-10-19T14:30:15.500000Z",
++        "asset_id": "MP-ASSET-002",
++        "payload": {
++            "verified": True,
++            "score": 0.95,
++            "notes": None,
++            "details": {"duration": 12.5, "tags": ["a", "b"]},
++        },
++        "sequence_number": 5,
++        "prev_hash": "a" * 64,
++        "parent_event_id": "EVT-VEC-001",
++        "signer_key_id": "KEY-ED25519-DEV-01",
++        "metadata": {"source": "unit_test"},
++    }
++
++    expected_bytes_2 = (
++        b'{"asset_id":"MP-ASSET-002","event_id":"EVT-VEC-002","event_type":"MEDIA_VERIFICATION",'
++        b'"metadata":{"source":"unit_test"},"parent_event_id":"EVT-VEC-001",'
++        b'"payload":{"details":{"duration":12.5,"tags":["a","b"]},"notes":null,"score":0.95,"verified":true},'
++        b'"prev_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
++        b'"schema_version":"1.0","sequence_number":5,"signer_key_id":"KEY-ED25519-DEV-01",'
++        b'"timestamp_utc":"2026-10-19T14:30:15.500000Z"}'
++    )
++    expected_hash_2 = "ef5ef7c109bf121e3a29c4633a3a051c5c460d844fe81b0a6daa872c07c640c5"
++
++    actual_bytes_2 = canonical_serialize_event(vector_2)
++    actual_hash_2 = calculate_event_hash(vector_2)
++
++    assert actual_bytes_2 == expected_bytes_2
++    assert actual_hash_2 == expected_hash_2
++
++    # Vector 3: Unicode and International Characters
++    vector_3 = {
++        "schema_version": "1.0",
++        "event_id": "EVT-VEC-003",
++        "event_type": "METADATA_UPDATE",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-ASSET-003",
++        "payload": {
++            "title": "café",
++            "languages": ["Ελληνικά", "日本語"],
++        },
++    }
++
++    expected_bytes_3 = (
++        b'{"asset_id":"MP-ASSET-003","event_id":"EVT-VEC-003","event_type":"METADATA_UPDATE",'
++        b'"payload":{"languages":["\xce\x95\xce\xbb\xce\xbb\xce\xb7\xce\xbd\xce\xb9\xce\xba\xce\xac","\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"],'
++        b'"title":"caf\xc3\xa9"},"schema_version":"1.0","timestamp_utc":"2026-10-19T10:00:00Z"}'
++    )
++    expected_hash_3 = "dfffbee2bdaf5b32c96073582ee1f85707211133e959cbd204191b43f89d4959"
++
++    actual_bytes_3 = canonical_serialize_event(vector_3)
++    actual_hash_3 = calculate_event_hash(vector_3)
++
++    assert actual_bytes_3 == expected_bytes_3
++    assert actual_hash_3 == expected_hash_3
++
++
++# ==============================================================================
++# 11. Phase 2.1.2 Final Canonical Serialization Gate Tests
++# ==============================================================================
++
++def test_numeric_encoder_exact_byte_representations():
++    """
++    Asserts fixed expected serialized bytes for IEEE 754 float boundaries,
++    exponent formatting, large integers (>64-bit), and boolean distinction.
++    """
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-NUM-GATE",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-NUM-GATE",
++    }
++
++    # 1. Exponent notation floats
++    ev_exp = {
++        **base,
++        "payload": {
++            "f_neg_6": 1e-6,
++            "f_neg_7": 1e-7,
++            "f_pos_20": 1e20,
++            "f_pos_21": 1e21,
++        },
++    }
++    b_exp = canonical_serialize_event(ev_exp)
++    assert b'"f_neg_6":1e-06' in b_exp
++    assert b'"f_neg_7":1e-07' in b_exp
++    assert b'"f_pos_20":1e+20' in b_exp
++    assert b'"f_pos_21":1e+21' in b_exp
++
++    # 2. Signed zero floats (-0.0 normalized to 0.0)
++    ev_zero_neg = {**base, "payload": {"val": -0.0}}
++    ev_zero_pos = {**base, "payload": {"val": 0.0}}
++    b_zero_neg = canonical_serialize_event(ev_zero_neg)
++    b_zero_pos = canonical_serialize_event(ev_zero_pos)
++    assert b_zero_neg == b_zero_pos
++    assert b'"val":0.0' in b_zero_neg
++    assert b"-0.0" not in b_zero_neg
++
++    # 3. Subnormal and extreme finite floats
++    ev_subnormal = {**base, "payload": {"subnormal": 5e-324, "max_finite": 1.7976931348623157e+308}}
++    b_sub = canonical_serialize_event(ev_subnormal)
++    assert b'"subnormal":5e-324' in b_sub
++    assert b'"max_finite":1.7976931348623157e+308' in b_sub
++
++    # 4. Integers larger than 64 bits
++    ev_large_int = {
++        **base,
++        "payload": {
++            "int_64": 18446744073709551616,  # 2^64
++            "int_128": 340282366920938463463374607431768211456,  # 2^128
++            "int_10_30": 10**30,
++        },
++    }
++    b_large_int = canonical_serialize_event(ev_large_int)
++    assert b'"int_64":18446744073709551616' in b_large_int
++    assert b'"int_128":340282366920938463463374607431768211456' in b_large_int
++    assert b'"int_10_30":1000000000000000000000000000000' in b_large_int
++
++    # 5. Booleans vs integers
++    ev_bool_int = {
++        **base,
++        "payload": {
++            "b_true": True,
++            "b_false": False,
++            "i_one": 1,
++            "i_zero": 0,
++        },
++    }
++    b_bool_int = canonical_serialize_event(ev_bool_int)
++    assert b'"b_false":false,"b_true":true,"i_one":1,"i_zero":0' in b_bool_int
++
++    # 6. Non-finite floats rejected
++    for non_finite in [float("nan"), float("inf"), float("-inf")]:
++        with pytest.raises(EventValidationError, match="Non-finite float value"):
++            canonical_serialize_event({**base, "payload": {"val": non_finite}})
++
++
++def test_unicode_escaping_control_characters_and_surrogate_rejection():
++    """
++    Tests exact JSON character escaping for quotes, backslashes, control
++    characters, and confirms surrogate code points fail predictably with EventValidationError.
++    """
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-ESC",
++        "event_type": "ASSET_REGISTRATION",
++        "timestamp_utc": "2026-10-19T10:00:00Z",
++        "asset_id": "MP-ESC",
++    }
++
++    # Control chars and quotes/backslashes
++    special_text = 'quotes: " backslash: \\ newline: \n tab: \t cr: \r null_byte: \u0000 unit_sep: \u001f'
++    ev_special = {**base, "payload": {"text": special_text}}
++    b_special = canonical_serialize_event(ev_special)
++    raw_str = b_special.decode("utf-8")
++
++    assert r'quotes: \"' in raw_str
++    assert r'backslash: \\' in raw_str
++    assert r'\n' in raw_str
++    assert r'\t' in raw_str
++    assert r'\r' in raw_str
++    assert r'\u0000' in raw_str
++    assert r'\u001f' in raw_str
++
++    # Lone surrogate code points must strictly fail with EventValidationError
++    for surrogate in ["\ud800", "\ud83d", "\udfff"]:
++        bad_payload = {**base, "payload": {"bad_text": f"prefix_{surrogate}_suffix"}}
++        with pytest.raises(EventValidationError, match="surrogate code points"):
++            canonical_serialize_event(bad_payload)
++
++        bad_key = {**base, "payload": {f"key_{surrogate}": "valid_value"}}
++        with pytest.raises(EventValidationError, match="surrogate code points"):
++            canonical_serialize_event(bad_key)
++
++
++def test_timestamp_date_boundary_and_fractional_precision():
++    """
++    Verifies date-boundary rollover across timezone offsets and fractional
++    second precision canonicalization.
++    """
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-TIME-GATE",
++        "event_type": "ASSET_REGISTRATION",
++        "asset_id": "MP-TIME-GATE",
++        "payload": {},
++    }
++
++    # Date-boundary rollover: 2026-10-19 23:30:00 -01:00 is 2026-10-20 00:30:00 UTC
++    ev_rollover = {**base, "timestamp_utc": "2026-10-19T23:30:00-01:00"}
++    b_rollover = canonical_serialize_event(ev_rollover)
++    assert b'"timestamp_utc":"2026-10-20T00:30:00Z"' in b_rollover
++
++    # Fractional precision equivalence: .5, .50, .500000 all equal 500,000 microseconds
++    b_f1 = canonical_serialize_event({**base, "timestamp_utc": "2026-10-19T10:00:00.5Z"})
++    b_f2 = canonical_serialize_event({**base, "timestamp_utc": "2026-10-19T10:00:00.50Z"})
++    b_f3 = canonical_serialize_event({**base, "timestamp_utc": "2026-10-19T10:00:00.500000Z"})
++    assert b_f1 == b_f2 == b_f3
++    assert b'"timestamp_utc":"2026-10-19T10:00:00.500000Z"' in b_f1
++
++    # Zero fractional seconds: .000000 canonicalizes to no fractional part
++    b_z1 = canonical_serialize_event({**base, "timestamp_utc": "2026-10-19T10:00:00.000000Z"})
++    b_z2 = canonical_serialize_event({**base, "timestamp_utc": "2026-10-19T10:00:00Z"})
++    assert b_z1 == b_z2
++    assert b'"timestamp_utc":"2026-10-19T10:00:00Z"' in b_z1
++
++
++def test_timestamp_precision_limit_and_rejection():
++    """
++    Verifies that timestamps exceeding 6 fractional digits (microsecond precision)
++    are strictly rejected to prevent silent precision loss / truncation.
++    Also verifies malformed fractions and equivalent timezone representations.
++    """
++    base = {
++        "schema_version": "1.0",
++        "event_id": "EVT-TS-PRECISION",
++        "event_type": "ASSET_REGISTRATION",
++        "asset_id": "MP-TS-PRECISION",
++        "payload": {},
++    }
++
++    # 1. Exactly 6 fractional digits is accepted
++    ev_6digit = {**base, "timestamp_utc": "2026-10-19T10:00:00.123456Z"}
++    b_6digit = canonical_serialize_event(ev_6digit)
++    assert b'"timestamp_utc":"2026-10-19T10:00:00.123456Z"' in b_6digit
++
++    # 2. Seven or more fractional digits MUST be rejected (no silent truncation)
++    for over_precision in [
++        "2026-10-19T10:00:00.1234567Z",      # 7 digits
++        "2026-10-19T10:00:00.1234560Z",      # 7 digits with trailing zero
++        "2026-10-19T10:00:00.12345600Z",     # 8 digits with trailing zeroes
++        "2026-10-19T10:00:00.123456789Z",    # 9 digits (nanoseconds)
++        "2026-10-19T10:00:00.1234567+02:00", # 7 digits with offset
++        "2026-10-19T10:00:00.1234560-05:00", # 7 digits with negative offset
++    ]:
++        with pytest.raises(EventValidationError, match="exceeds maximum supported precision"):
++            canonical_serialize_event({**base, "timestamp_utc": over_precision})
++
++    # 3. Malformed fractions must be rejected
++    for malformed in [
++        "2026-10-19T10:00:00.Z",        # dot with no digits
++        "2026-10-19T10:00:00..123Z",     # double dot
++        "2026-10-19T10:00:00.abcZ",     # non-numeric fraction
++        "2026-10-19T10:00:00,123456Z",  # comma separator instead of dot
++        "2026-10-19T10:00:00.123.456Z", # multiple dots
++    ]:
++        with pytest.raises(EventValidationError):
++            canonical_serialize_event({**base, "timestamp_utc": malformed})
++
++    # 4. Equivalent timezone representations produce identical canonical bytes and hash
++    equiv_tz_fractional = [
++        "2026-10-19T10:00:00.123456Z",
++        "2026-10-19T10:00:00.123456+00:00",
++        "2026-10-19T05:00:00.123456-05:00",
++        "2026-10-19T15:30:00.123456+05:30",
++    ]
++    b_first_frac = canonical_serialize_event({**base, "timestamp_utc": equiv_tz_fractional[0]})
++    h_first_frac = calculate_event_hash({**base, "timestamp_utc": equiv_tz_fractional[0]})
++    for ts_variant in equiv_tz_fractional[1:]:
++        b_var = canonical_serialize_event({**base, "timestamp_utc": ts_variant})
++        h_var = calculate_event_hash({**base, "timestamp_utc": ts_variant})
++        assert b_var == b_first_frac
++        assert h_var == h_first_frac
++
++    # 5. Equivalent timezone representations without fractions
++    equiv_tz_no_frac = [
++        "2026-10-19T10:00:00Z",
++        "2026-10-19T10:00:00+00:00",
++        "2026-10-19T05:00:00-05:00",
++        "2026-10-19T15:30:00+05:30",
++    ]
++    b_first_no_frac = canonical_serialize_event({**base, "timestamp_utc": equiv_tz_no_frac[0]})
++    h_first_no_frac = calculate_event_hash({**base, "timestamp_utc": equiv_tz_no_frac[0]})
++    for ts_variant in equiv_tz_no_frac[1:]:
++        b_var = canonical_serialize_event({**base, "timestamp_utc": ts_variant})
++        h_var = calculate_event_hash({**base, "timestamp_utc": ts_variant})
++        assert b_var == b_first_no_frac
++        assert h_var == h_first_no_frac
++
++
++

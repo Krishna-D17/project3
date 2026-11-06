@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediaProof — Local Provenance & Forensic Verification</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Application Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">MP</div>
+        <div class="brand-title">
+          <h1>MediaProof</h1>
+          <p>Local Media Provenance & Forensic Verification</p>
+        </div>
+      </div>
+      <div class="system-status">
+        <div id="status-indicator" class="status-dot"></div>
+        <span id="status-text">Backend Online (CPU Mode)</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="app-main">
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" role="tablist">
+      <button class="tab-btn active" id="tab-protect-btn" data-target="pane-protect" role="tab">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        Protect Media
+      </button>
+      <button class="tab-btn" id="tab-verify-btn" data-target="pane-verify" role="tab">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        Verify Media
+      </button>
+      <button class="tab-btn" id="tab-status-btn" data-target="pane-status" role="tab">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+        System Status
+      </button>
+    </nav>
+
+    <!-- PANE 1: PROTECT MEDIA -->
+    <section id="pane-protect" class="tab-pane active">
+      <div class="card">
+        <h2 class="card-title">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          Register & Protect Original Media
+        </h2>
+        <p class="card-subtitle">Upload original video or audio file to register cryptographic provenance and embed an imperceptible watermark.</p>
+
+        <!-- Dropzone -->
+        <div id="protect-dropzone" class="dropzone">
+          <div class="dropzone-icon">📁</div>
+          <div class="dropzone-text">Click or drag & drop original media file here</div>
+          <div class="dropzone-hint">Supports MP4, MOV, AVI, WAV, MP3, AAC, FLAC (Max 500 MB)</div>
+          <input type="file" id="protect-file-input" accept="video/*,audio/*,.mp4,.mov,.avi,.mkv,.webm,.wav,.mp3,.flac,.aac,.ogg,.m4a">
+        </div>
+
+        <!-- File Preview -->
+        <div id="protect-preview-box" class="media-preview-box" style="display: none;">
+          <div class="media-player-wrapper" id="protect-player-container"></div>
+          <div class="media-meta-grid" id="protect-meta-grid"></div>
+        </div>
+
+        <!-- Watermark Options -->
+        <div id="protect-options-box" style="display: none; margin-top: 1.5rem;">
+          <div class="form-group">
+            <label class="form-label" for="watermark-engine-select">Select Watermark Engine</label>
+            <select id="watermark-engine-select" class="form-select">
+              <!-- Dynamically populated based on video vs audio -->
+            </select>
+          </div>
+
+          <div class="info-note">
+            💡 <strong>Note:</strong> Watermarks provide provenance linkage evidence across transcodes and crops, but are not unremovable. Cryptographic SHA-256 hashes identify exact byte identity.
+          </div>
+
+          <button id="protect-submit-btn" class="btn-primary">
+            <span>PROTECT MEDIA</span>
+          </button>
+        </div>
+
+        <!-- Protect Result Summary -->
+        <div id="protect-result-box" style="display: none; margin-top: 1.5rem;">
+          <div class="card" style="background: rgba(16, 185, 129, 0.08); border-color: #10b981;">
+            <h3 class="card-title" style="color: #34d399;">
+              <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              Media Protected Successfully!
+            </h3>
+            <p class="card-subtitle" style="color: #a7f3d0;">Provenance record created in local SQLite database and watermark embedded.</p>
+
+            <div class="media-meta-grid" id="protect-result-grid" style="margin-bottom: 1.25rem;"></div>
+
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <a id="protect-download-btn" class="btn-primary" style="text-decoration: none; max-width: 250px;" download>
+                📥 Download Protected File
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANE 2: VERIFY MEDIA -->
+    <section id="pane-verify" class="tab-pane">
+      <div class="card">
+        <h2 class="card-title">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          Verify Suspicious / Test Media
+        </h2>
+        <p class="card-subtitle">Analyze file identity, extract invisible watermark payloads, query SQLite provenance, and run forensic signal detection.</p>
+
+        <!-- Dropzone -->
+        <div id="verify-dropzone" class="dropzone">
+          <div class="dropzone-icon">🔍</div>
+          <div class="dropzone-text">Click or drag & drop media file to verify</div>
+          <div class="dropzone-hint">Supports MP4, MOV, AVI, WAV, MP3, AAC, FLAC</div>
+          <input type="file" id="verify-file-input" accept="video/*,audio/*,.mp4,.mov,.avi,.mkv,.webm,.wav,.mp3,.flac,.aac,.ogg,.m4a">
+        </div>
+
+        <!-- File Preview -->
+        <div id="verify-preview-box" class="media-preview-box" style="display: none;">
+          <div class="media-player-wrapper" id="verify-player-container"></div>
+          <div class="media-meta-grid" id="verify-meta-grid"></div>
+        </div>
+
+        <!-- Engine Select Options -->
+        <div id="verify-options-box" style="display: none; margin-top: 1.5rem;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div class="form-group">
+              <label class="form-label" for="verify-video-engine">Video Watermark Engine</label>
+              <select id="verify-video-engine" class="form-select">
+                <option value="videoseal">Meta VideoSeal (Neural)</option>
+                <option value="custom">Custom Spatial Baseline</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="verify-audio-engine">Audio Watermark Engine</label>
+              <select id="verify-audio-engine" class="form-select">
+                <option value="audioseal">Meta FAIR AudioSeal (Neural)</option>
+                <option value="custom">Custom Spread-Spectrum</option>
+              </select>
+            </div>
+          </div>
+
+          <button id="verify-submit-btn" class="btn-primary">
+            <span>VERIFY MEDIA</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Verification Output Section -->
+      <div id="verify-results-container" style="display: none;">
+        
+        <!-- Final Decision State Banner -->
+        <div id="decision-banner" class="decision-banner">
+          <div class="decision-state-title">
+            <span id="decision-state-text">VERIFIED ORIGINAL</span>
+            <span id="decision-confidence-tag" class="decision-confidence">HIGH CONFIDENCE</span>
+          </div>
+          <p id="decision-explanation-text" class="decision-explanation"></p>
+        </div>
+
+        <div class="info-note">
+          ⚠️ <strong>Note:</strong> Watermark absence never automatically implies manipulation. Media without watermarks may simply be un-tracked original content.
+        </div>
+
+        <!-- 4 Evidence Categories Cards Grid -->
+        <div class="card">
+          <h3 class="card-title">Comprehensive Multi-Layer Evidence Panel</h3>
+          <p class="card-subtitle">Empirical findings synthesized by the MediaProof Decision Matrix.</p>
+
+          <div class="evidence-grid">
+            <!-- 1. Cryptographic Evidence Card -->
+            <div class="evidence-card">
+              <div class="evidence-card-header">
+                <span class="evidence-card-title">1. Cryptographic</span>
+                <span id="ev-hash-badge" class="evidence-badge">MATCH</span>
+              </div>
+              <div class="evidence-body" id="ev-hash-body"></div>
+              <div class="evidence-expl">"Hash match means the file is byte-for-byte identical to a registered original file."</div>
+            </div>
+
+            <!-- 2. Watermark Evidence Card -->
+            <div class="evidence-card">
+              <div class="evidence-card-header">
+                <span class="evidence-card-title">2. Watermark</span>
+                <span id="ev-wm-badge" class="evidence-badge">RESOLVED</span>
+              </div>
+              <div class="evidence-body" id="ev-wm-body"></div>
+              <div class="evidence-expl">"Watermark evidence supports provenance and ownership lineage linkage."</div>
+            </div>
+
+            <!-- 3. Provenance Evidence Card -->
+            <div class="evidence-card">
+              <div class="evidence-card-header">
+                <span class="evidence-card-title">3. Provenance</span>
+                <span id="ev-prov-badge" class="evidence-badge">RECORD FOUND</span>
+              </div>
+              <div class="evidence-body" id="ev-prov-body"></div>
+              <div class="evidence-expl">"SQLite asset registry linkage and derivative relationship records."</div>
+            </div>
+
+            <!-- 4. Forensic Signals Evidence Card -->
+            <div class="evidence-card">
+              <div class="evidence-card-header">
+                <span class="evidence-card-title">4. Forensics</span>
+                <span id="ev-forensic-badge" class="evidence-badge">LOW RISK</span>
+              </div>
+              <div class="evidence-body" id="ev-forensic-body"></div>
+              <div class="evidence-expl">"Deterministic spectral/acoustic signals and transformation consistency metrics."</div>
+            </div>
+
+            <!-- 5. Manipulation Evidence Card -->
+            <div class="evidence-card">
+              <div class="evidence-card-header">
+                <span class="evidence-card-title">5. Deepfake / Manipulation ML</span>
+                <span id="ev-manip-badge" class="evidence-badge">NOT AVAILABLE</span>
+              </div>
+              <div class="evidence-body" id="ev-manip-body"></div>
+              <div class="evidence-expl" id="ev-manip-expl">"MediaProof knows where this media came from, but currently cannot establish whether the content was subsequently manipulated."</div>
+            </div>
+          </div>
+
+          <!-- Limitations & Conflicts Box -->
+          <div id="verify-limitations-box" class="alert-box alert-info" style="display: none;"></div>
+          <div id="verify-conflicts-box" class="alert-box alert-warning" style="display: none;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANE 3: SYSTEM STATUS -->
+    <section id="pane-status" class="tab-pane">
+      <div class="card">
+        <h2 class="card-title">System Status & Environment Diagnostics</h2>
+        <p class="card-subtitle">Real-time status of local CPU execution engines, FFmpeg binaries, neural models, and SQLite database.</p>
+
+        <div class="status-grid" id="system-status-grid">
+          <div class="status-card">
+            <span class="status-card-title">Backend API</span>
+            <span class="status-card-val" id="st-backend">Checking...</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-title">Execution Mode</span>
+            <span class="status-card-val" id="st-mode">CPU (AMD64)</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-title">FFmpeg / FFprobe</span>
+            <span class="status-card-val" id="st-ffmpeg">Checking...</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-title">Meta VideoSeal Engine</span>
+            <span class="status-card-val" id="st-videoseal">Checking...</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-title">Meta AudioSeal Engine</span>
+            <span class="status-card-val" id="st-audioseal">Checking...</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-title">Optional Video ML</span>
+            <span class="status-card-val" style="color: var(--text-muted);">Not Installed</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-title">Optional Audio ML</span>
+            <span class="status-card-val" style="color: var(--text-muted);">Not Installed</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-title">SQLite Database</span>
+            <span class="status-card-val" id="st-db">Checking...</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <p>MediaProof v0.1.0 — 100% Local Offline Provenance & Forensic Decision Engine</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

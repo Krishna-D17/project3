@@ -1,0 +1,297 @@
+{
+  "project": "MediaProof",
+  "audit_step": "Step 7A",
+  "timestamp": "2026-09-03T19:33:58Z",
+  "os": "Windows 10 AMD64",
+  "python_version": "3.11.14 (main, Feb 12 2026, 00:37:49) [MSC v.1944 64 bit (AMD64)]",
+  "pytest_baseline": "51 passed, 0 failed, 5 warnings, 35.25s",
+  "project_size": {
+    "total_bytes_with_venv": 2112840494,
+    "total_mb_with_venv": 2014.96,
+    "total_bytes_without_venv": 636862759,
+    "total_mb_without_venv": 607.36,
+    "venv_mb": 1407.17,
+    "ffmpeg_mb": 164.91,
+    "checkpoints_mb": 217.77,
+    "database_bytes": 36864
+  },
+  "models": [
+    {
+      "filename": "videoseal_y_256b_img.pth",
+      "relative_path": "ckpts\\videoseal_y_256b_img.pth",
+      "size_bytes": 228351471,
+      "size_mb": 217.77,
+      "sha256": "3d2ff2523d2a89e3532c6dfdcf693098799326e9b3e74c185e815e9baa8340a3",
+      "purpose": "VideoSeal Weights"
+    }
+  ],
+  "benchmarks": {
+    "videoseal_roundtrip_sec": 12.699,
+    "videoseal_peak_ram_mb": 911.39,
+    "audioseal_roundtrip_sec": 0.529,
+    "full_verify_endpoint_sec": 4.2
+  },
+  "combined_media_behavior": {
+    "same_asset_id": "MP-3495649e-534b-4017-a7b8-f0b5a97d54cd",
+    "same_asset_classification": "VERIFIED DERIVATIVE",
+    "same_asset_conflicts": [],
+    "different_asset_id_a": "MP-3495649e-534b-4017-a7b8-f0b5a97d54cd",
+    "different_asset_id_b": "MP-b543df1a-1ec7-4742-9f13-617ff3869f1c",
+    "different_asset_classification": "VERIFIED DERIVATIVE",
+    "different_asset_conflicts": []
+  },
+  "decision_matrix_audit": [
+    {
+      "scenario": "1. Exact Original (Watermarked)",
+      "classification": "INSUFFICIENT EVIDENCE",
+      "has_hash_match": null,
+      "watermark_status": null,
+      "forensic_risk": null,
+      "conflicts": [
+        "Provenance Conflict: Watermark resolves to Asset ID 'MP-77cd0218-09d0-42b6-9da8-de07d386855e' but SHA-256 hash matches Asset ID 'MP-c41ab316-5936-43f5-9db4-d6483419cf3f'."
+      ],
+      "limitations": [
+        "Video ML inference unavailable: Deepfake-specific EfficientNet-B4 model weights file not found. Step 6B audit confirmed standard ImageNet weights are NOT deepfake classifiers out-of-the-box. To enable ML inference, place deepfake weights at: 'C:\\Users\\krish\\Desktop\\project3\\MediaProof\\models\\forensics\\video_deepfake_efficientnet.pth'."
+      ]
+    },
+    {
+      "scenario": "2. Exact Original Without Watermark",
+      "classification": "VERIFIED ORIGINAL",
+      "has_hash_match": null,
+      "watermark_status": null,
+      "forensic_risk": null,
+      "conflicts": [],
+      "limitations": [
+        "Video ML inference unavailable: Deepfake-specific EfficientNet-B4 model weights file not found. Step 6B audit confirmed standard ImageNet weights are NOT deepfake classifiers out-of-the-box. To enable ML inference, place deepfake weights at: 'C:\\Users\\krish\\Desktop\\project3\\MediaProof\\models\\forensics\\video_deepfake_efficientnet.pth'.",
+        "Watermark evidence unavailable or not detected; classification based on SHA-256 identity."
+      ]
+    },
+    {
+      "scenario": "3. H.264 Derivative",
+      "classification": "VERIFIED DERIVATIVE",
+      "has_hash_match": null,
+      "watermark_status": null,
+      "forensic_risk": null,
+      "conflicts": [],
+      "limitations": [
+        "Video ML inference unavailable: Deepfake-specific EfficientNet-B4 model weights file not found. Step 6B audit confirmed standard ImageNet weights are NOT deepfake classifiers out-of-the-box. To enable ML inference, place deepfake weights at: 'C:\\Users\\krish\\Desktop\\project3\\MediaProof\\models\\forensics\\video_deepfake_efficientnet.pth'."
+      ]
+    },
+    {
+      "scenario": "4. Audio Re-encoded Derivative",
+      "classification": "VERIFIED DERIVATIVE",
+      "has_hash_match": null,
+      "watermark_status": null,
+      "forensic_risk": null,
+      "conflicts": [],
+      "limitations": [
+        "Audio ML inference unavailable: AASIST anti-spoofing model checkpoint file (AASIST.pth) not found. Step 6B audit confirmed AASIST weights are not pre-packaged in PyTorch pip distribution. To enable AASIST ML audio inference, place weights at: 'C:\\Users\\krish\\Desktop\\project3\\MediaProof\\models\\forensics\\aasist.pth'."
+      ]
+    },
+    {
+      "scenario": "5. Valid Watermark + Low Forensic Evidence",
+      "classification": "VERIFIED DERIVATIVE",
+      "has_hash_match": null,
+      "watermark_status": null,
+      "forensic_risk": null,
+      "conflicts": [],
+      "limitations": [
+        "Video ML inference unavailable: Deepfake-specific EfficientNet-B4 model weights file not found. Step 6B audit confirmed standard ImageNet weights are NOT deepfake classifiers out-of-the-box. To enable ML inference, place deepfake weights at: 'C:\\Users\\krish\\Desktop\\project3\\MediaProof\\models\\forensics\\video_deepfake_efficientnet.pth'."
+      ]
+    },
+    {
+      "scenario": "9. Watermark Asset A + Hash Asset B",
+      "classification": "INSUFFICIENT EVIDENCE",
+      "has_hash_match": null,
+      "watermark_status": null,
+      "forensic_risk": null,
+      "conflicts": [
+        "Provenance Conflict: Watermark resolves to Asset ID 'MP-77cd0218-09d0-42b6-9da8-de07d386855e' but SHA-256 hash matches Asset ID 'MP-c41ab316-5936-43f5-9db4-d6483419cf3f'."
+      ],
+      "limitations": [
+        "Video ML inference unavailable: Deepfake-specific EfficientNet-B4 model weights file not found. Step 6B audit confirmed standard ImageNet weights are NOT deepfake classifiers out-of-the-box. To enable ML inference, place deepfake weights at: 'C:\\Users\\krish\\Desktop\\project3\\MediaProof\\models\\forensics\\video_deepfake_efficientnet.pth'."
+      ]
+    },
+    {
+      "scenario": "10. Unknown Watermark Token",
+      "classification": "VERIFIED DERIVATIVE",
+      "has_hash_match": null,
+      "watermark_status": null,
+      "forensic_risk": null,
+      "conflicts": [],
+      "limitations": [
+        "Video ML inference unavailable: Deepfake-specific EfficientNet-B4 model weights file not found. Step 6B audit confirmed standard ImageNet weights are NOT deepfake classifiers out-of-the-box. To enable ML inference, place deepfake weights at: 'C:\\Users\\krish\\Desktop\\project3\\MediaProof\\models\\forensics\\video_deepfake_efficientnet.pth'."
+      ]
+    }
+  ],
+  "failure_handling_audit": [
+    {
+      "test": "Unsupported Extension",
+      "status_code": 200,
+      "expected": 400,
+      "graceful": false,
+      "response_json": {
+        "status": "error",
+        "classification": "INSUFFICIENT EVIDENCE",
+        "confidence": "LOW",
+        "confidence_basis": [
+          "Failed to probe media or calculate hash"
+        ],
+        "asset_id": null,
+        "hash_evidence": {
+          "status": "ERROR",
+          "strength": "NONE",
+          "explanation": "Media error: Failed to probe file 'upload_verify_993006370dcc49baa3641ab7f72c108c_invalid.txt': ffprobe failed to read media file",
+          "details": {}
+        },
+        "watermark_evidence": {
+          "status": "DETECTION_ERROR",
+          "strength": "NONE",
+          "explanation": "Watermark detection bypassed",
+          "details": {}
+        },
+        "provenance_evidence": {
+          "status": "NO_RECORD",
+          "strength": "NONE",
+          "explanation": "Provenance lookup bypassed",
+          "details": {}
+        },
+        "forensic_evidence": {
+          "status": "INSUFFICIENT",
+          "strength": "NONE",
+          "explanation": "Forensic analysis bypassed",
+          "details": {}
+        },
+        "metadata_evidence": {
+          "status": "ERROR",
+          "strength": "NONE",
+          "explanation": "Metadata analysis bypassed",
+          "details": {}
+        },
+        "conflicts": [],
+        "limitations": [
+          "Processing error: Failed to probe file 'upload_verify_993006370dcc49baa3641ab7f72c108c_invalid.txt': ffprobe failed to read media file"
+        ],
+        "processing_time_seconds": 0.017
+      }
+    },
+    {
+      "test": "Corrupt File",
+      "status_code": 200,
+      "expected": 400,
+      "graceful": false,
+      "response_json": {
+        "status": "error",
+        "classification": "INSUFFICIENT EVIDENCE",
+        "confidence": "LOW",
+        "confidence_basis": [
+          "Failed to probe media or calculate hash"
+        ],
+        "asset_id": null,
+        "hash_evidence": {
+          "status": "ERROR",
+          "strength": "NONE",
+          "explanation": "Media error: Failed to probe file 'upload_verify_c1b57a1cd0154cf284042320ac213ee8_corrupt.mp4': ffprobe failed to read media file",
+          "details": {}
+        },
+        "watermark_evidence": {
+          "status": "DETECTION_ERROR",
+          "strength": "NONE",
+          "explanation": "Watermark detection bypassed",
+          "details": {}
+        },
+        "provenance_evidence": {
+          "status": "NO_RECORD",
+          "strength": "NONE",
+          "explanation": "Provenance lookup bypassed",
+          "details": {}
+        },
+        "forensic_evidence": {
+          "status": "INSUFFICIENT",
+          "strength": "NONE",
+          "explanation": "Forensic analysis bypassed",
+          "details": {}
+        },
+        "metadata_evidence": {
+          "status": "ERROR",
+          "strength": "NONE",
+          "explanation": "Metadata analysis bypassed",
+          "details": {}
+        },
+        "conflicts": [],
+        "limitations": [
+          "Processing error: Failed to probe file 'upload_verify_c1b57a1cd0154cf284042320ac213ee8_corrupt.mp4': ffprobe failed to read media file"
+        ],
+        "processing_time_seconds": 0.0331
+      }
+    },
+    {
+      "test": "Zero-byte File",
+      "status_code": 200,
+      "expected": 400,
+      "graceful": false,
+      "response_json": {
+        "status": "error",
+        "classification": "INSUFFICIENT EVIDENCE",
+        "confidence": "LOW",
+        "confidence_basis": [
+          "Failed to probe media or calculate hash"
+        ],
+        "asset_id": null,
+        "hash_evidence": {
+          "status": "ERROR",
+          "strength": "NONE",
+          "explanation": "Media error: Failed to probe file 'upload_verify_abd6b3c18d8b4efca7994fd7106fa8fd_zero.mp4': ffprobe failed to read media file",
+          "details": {}
+        },
+        "watermark_evidence": {
+          "status": "DETECTION_ERROR",
+          "strength": "NONE",
+          "explanation": "Watermark detection bypassed",
+          "details": {}
+        },
+        "provenance_evidence": {
+          "status": "NO_RECORD",
+          "strength": "NONE",
+          "explanation": "Provenance lookup bypassed",
+          "details": {}
+        },
+        "forensic_evidence": {
+          "status": "INSUFFICIENT",
+          "strength": "NONE",
+          "explanation": "Forensic analysis bypassed",
+          "details": {}
+        },
+        "metadata_evidence": {
+          "status": "ERROR",
+          "strength": "NONE",
+          "explanation": "Metadata analysis bypassed",
+          "details": {}
+        },
+        "conflicts": [],
+        "limitations": [
+          "Processing error: Failed to probe file 'upload_verify_abd6b3c18d8b4efca7994fd7106fa8fd_zero.mp4': ffprobe failed to read media file"
+        ],
+        "processing_time_seconds": 0.0325
+      }
+    },
+    {
+      "test": "Invalid Asset ID",
+      "status_code": 400,
+      "expected": 404,
+      "graceful": true,
+      "response_json": {
+        "detail": "Invalid video file or engine option: Invalid Asset ID UUID string for encoding: 'MP-invalid-id': badly formed hexadecimal UUID string"
+      }
+    },
+    {
+      "test": "Invalid Watermark Engine",
+      "status_code": 400,
+      "expected": 400,
+      "graceful": true,
+      "response_json": {
+        "detail": "Invalid video file or engine option: Unsupported video watermarking engine 'invalid_engine'. Supported engine types: 'custom', 'videoseal'."
+      }
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "step": "Video E2E Audit",
+  "timestamp": "2026-09-03T19:33:14Z",
+  "original_file": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_video_orig.mp4",
+  "watermarked_file": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_video_vseal_wm.mp4",
+  "asset_id": "MP-77cd0218-09d0-42b6-9da8-de07d386855e",
+  "sha256": "75719a50f54b708b948bdf602cab25209bb1c2c41b8a816f93711c9a1bcb8ad0",
+  "watermark_token": "BE05",
+  "embed_result": {
+    "status": "ok",
+    "engine": "videoseal",
+    "output_path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_video_vseal_wm.mp4",
+    "asset_id": "MP-77cd0218-09d0-42b6-9da8-de07d386855e",
+    "size_bytes": 27537,
+    "has_watermark": true,
+    "processing_time_seconds": 14.2317,
+    "details": {
+      "engine_display_name": "Meta VideoSeal Neural Watermark Engine",
+      "watermark_token": "BE05"
+    }
+  },
+  "detect_result": {
+    "status": "ok",
+    "engine": "videoseal",
+    "watermark_detected": true,
+    "confidence": 0.98,
+    "recovered_asset_id": "MP-77cd0218-09d0-42b6-9da8-de07d386855e",
+    "provenance_record": {
+      "id": 17,
+      "asset_id": "MP-77cd0218-09d0-42b6-9da8-de07d386855e",
+      "watermark_token": "BE05",
+      "original_filename": "audit_video_orig.mp4",
+      "original_path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_video_orig.mp4",
+      "file_size_bytes": 15257,
+      "sha256": "75719a50f54b708b948bdf602cab25209bb1c2c41b8a816f93711c9a1bcb8ad0",
+      "media_type": "video",
+      "container_format": "mov,mp4,m4a,3gp,3g2,mj2",
+      "duration_seconds": 3.0,
+      "video_codec": "h264",
+      "width": 320,
+      "height": 240,
+      "fps": 15.0,
+      "audio_codec": null,
+      "sample_rate": null,
+      "channels": null,
+      "parent_asset_id": null,
+      "relationship_type": "ORIGINAL",
+      "created_at": "2026-09-03T19:31:42.315396+00:00",
+      "registered_at": "2026-09-03T19:31:42.315396+00:00",
+      "already_registered": false
+    },
+    "processing_time_seconds": 5.5331,
+    "message": "VideoSeal watermark payload successfully detected and decoded.",
+    "details": {
+      "watermark_token": "BE15",
+      "engine_display_name": "Meta VideoSeal Neural Watermark Engine"
+    }
+  },
+  "forensic_risk": "LOW",
+  "api_verify_classification": "VERIFIED DERIVATIVE",
+  "api_verify_full": {
+    "status": "ok",
+    "classification": "VERIFIED DERIVATIVE",
+    "confidence": "HIGH",
+    "confidence_basis": [
+      "Resolved watermark token 'BE15' -> 'MP-77cd0218-09d0-42b6-9da8-de07d386855e'",
+      "Watermark verified pointing to parent Asset ID 'MP-77cd0218-09d0-42b6-9da8-de07d386855e'"
+    ],
+    "asset_id": "MP-77cd0218-09d0-42b6-9da8-de07d386855e",
+    "hash_evidence": {
+      "status": "MISMATCH",
+      "strength": "NONE",
+      "explanation": "SHA-256 hash does not match any registered original asset.",
+      "details": {
+        "sha256": "b1f9a60950efddef5499ab8c1406ce06b411137682c596ed071ba782e75bbddb",
+        "matched_asset_id": null
+      }
+    },
+    "watermark_evidence": {
+      "status": "PRESENT_AND_RESOLVED",
+      "strength": "STRONG",
+      "explanation": "Invisible watermark detected (video_videoseal) and resolved to Asset ID 'MP-77cd0218-09d0-42b6-9da8-de07d386855e'.",
+      "details": {
+        "watermark_detected": true,
+        "token": "BE15",
+        "resolved_asset_id": "MP-77cd0218-09d0-42b6-9da8-de07d386855e",
+        "engine_used": "video_videoseal"
+      }
+    },
+    "provenance_evidence": {
+      "status": "RECORD_FOUND",
+      "strength": "STRONG",
+      "explanation": "Registered provenance record retrieved for Asset ID 'MP-77cd0218-09d0-42b6-9da8-de07d386855e'.",
+      "details": {
+        "id": 17,
+        "asset_id": "MP-77cd0218-09d0-42b6-9da8-de07d386855e",
+        "watermark_token": "BE05",
+        "original_filename": "audit_video_orig.mp4",
+        "original_path": "C:\\Users\\krish\\Desktop\\project3\\MediaProof\\data\\temp\\audit_media\\audit_video_orig.mp4",
+        "file_size_bytes": 15257,
+        "sha256": "75719a50f54b708b948bdf602cab25209bb1c2c41b8a816f93711c9a1bcb8ad0",
+        "media_type": "video",
+        "container_format": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration_seconds": 3.0,
+        "video_codec": "h264",
+        "width": 320,
+        "height": 240,
+        "fps": 15.0,
+        "audio_codec": null,
+        "sample_rate": null,
+        "channels": null,
+        "parent_asset_id": null,
+        "relationship_type": "ORIGINAL",
+        "created_at": "2026-09-03T19:31:42.315396+00:00",
+        "registered_at": "2026-09-03T19:31:42.315396+00:00",
+        "already_registered": false
+      }
+    },
+    "forensic_evidence": {
+      "status": "MEDIUM",
+      "strength": "MEDIUM",
+      "explanation": "Elevated forensic signals detected (Risk Score: 0.30).",
+      "details": {
+        "forensic_risk_score": 0.3,
+        "risk_score_type": "heuristic",
+        "raw_status": "ELEVATED_RISK",
+        "signals_count": 4
+      }
+    },
+    "metadata_evidence": {
+      "status": "STANDARD",
+      "strength": "LOW",
+      "explanation": "Standard container and stream metadata parameters.",
+      "details": {
+        "anomalies_found": []
+      }
+    },
+    "conflicts": [],
+    "limitations": [
+      "Video ML inference unavailable: Deepfake-specific EfficientNet-B4 model weights file not found. Step 6B audit confirmed standard ImageNet weights are NOT deepfake classifiers out-of-the-box. To enable ML inference, place deepfake weights at: 'C:\\Users\\krish\\Desktop\\project3\\MediaProof\\models\\forensics\\video_deepfake_efficientnet.pth'."
+    ],
+    "processing_time_seconds": 5.7102
+  }
+}
